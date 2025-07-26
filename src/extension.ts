@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import {post} from 'axios';
 import * as fs from 'fs';
+import {v4 as uuidv4} from 'uuid';
 import {authenticateWithGitHub} from './auth';
 import {syncPersonalization, updatePersonalization} from './personalization';
 import apiUrl from "./config";
@@ -116,6 +117,7 @@ export function activate(context: vscode.ExtensionContext) {
         console.log(code);
 
         let history: string[] = [];
+        let conversationId: string | undefined = undefined;
 
         chatContext.history.slice(-MAX_HISTORY_LENGTH).forEach((item) => {
             if (item instanceof vscode.ChatRequestTurn) {
@@ -124,7 +126,19 @@ export function activate(context: vscode.ExtensionContext) {
                 let fullMessage = '';
                 item.response.forEach(r => {
                     const mdPart = r as vscode.ChatResponseMarkdownPart;
-                    fullMessage += mdPart.value.value;
+                    
+                    let content = mdPart.value.value;
+
+                    if (content) {
+                        const match = content.match(/\[\]\( conversation_id:(\S+) \)/);
+
+                        if (match && !conversationId) {
+                            conversationId = match[1] ?? undefined;
+                            content = content.replace(/\[\]\( conversation_id:(\S+) \)/, '');
+                        }
+                        
+                        fullMessage += content;
+                    }
                 });
 
                 history.push("Tiamat: " + fullMessage);
@@ -133,14 +147,14 @@ export function activate(context: vscode.ExtensionContext) {
 
         console.log("Chat history:", history);
 
-        let id = "0";
+        let userId = "0";
         try {
-            id = await authenticateWithGitHub(context) ?? "0";
+           userId = await authenticateWithGitHub(context) ?? "0";
         } catch (error) {
             console.error('Error connecting:', error);
             
         }
-        console.log("User ID:", id);
+        console.log("User ID:", userId);
 
         let config = vscode.workspace.getConfiguration();
         let personalize = config.get<boolean>("tiamat.personalizeResponses");
@@ -158,9 +172,22 @@ export function activate(context: vscode.ExtensionContext) {
         }
 
         try {
-            const apiResponse = await post(`${apiUrl}/api/prompt`, {id, code, message: request.prompt, history, personalize, persona});
+            // if we didn't find conversation ID in the history, create a new one in this message
+            if (!conversationId) {
+                conversationId = uuidv4();
+                // this is so silly but we put the conversation id as a blank link that won't show up in MD
+                stream.markdown(`[]( conversation_id:${conversationId} )`);
+            }
+
+            // get Tiamat response
+            const apiResponse = await post(`${apiUrl}/api/prompt`, 
+                {userID: userId, conversationID: conversationId, 
+                    code, message: request.prompt, history, personalize, persona});
             stream.markdown(apiResponse.data.response);
-            var args = {id: id, code: code, message: request.prompt, response: apiResponse.data.response};          
+            
+            // set up feedback button
+            var args = {userID: userId, conversationID: conversationId, 
+                code: code, message: request.prompt, response: apiResponse.data.response};          
             stream.button({
                 command: 'tiamat.handleFeedback',
                 title: vscode.l10n.t(FEEDBACK_BUTTON_TEXT),
