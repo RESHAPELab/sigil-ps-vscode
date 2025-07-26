@@ -147,14 +147,12 @@ export function activate(context: vscode.ExtensionContext) {
 
         console.log("Chat history:", history);
 
-        let userId = "0";
-        try {
-           userId = await authenticateWithGitHub(context) ?? "0";
-        } catch (error) {
-            console.error('Error connecting:', error);
-            
+        let githubUser = await authenticateWithGitHub(context);
+
+        if (!githubUser) {
+            vscode.window.showErrorMessage("Tiamat: Authentication required to chat");
+            return;
         }
-        console.log("User ID:", userId);
 
         let config = vscode.workspace.getConfiguration();
         let personalize = config.get<boolean>("tiamat.personalizeResponses");
@@ -181,12 +179,17 @@ export function activate(context: vscode.ExtensionContext) {
 
             // get Tiamat response
             const apiResponse = await post(`${apiUrl}/api/prompt`, 
-                {userID: userId, conversationID: conversationId, 
-                    code, message: request.prompt, history, personalize, persona});
+                {userID: githubUser?.id, conversationID: conversationId, 
+                    code, message: request.prompt, history, personalize, persona, 
+                    userMetaData: {
+                        login: githubUser.login,
+                        email: githubUser.email,
+                        name: githubUser.name
+                }});
             stream.markdown(apiResponse.data.response);
             
             // set up feedback button
-            var args = {userID: userId, conversationID: conversationId, 
+            var args = {userID: githubUser?.id, conversationID: conversationId, 
                 code: code, message: request.prompt, response: apiResponse.data.response};          
             stream.button({
                 command: 'tiamat.handleFeedback',

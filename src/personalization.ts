@@ -6,14 +6,14 @@ import { Axios } from "axios";
 
 export async function syncPersonalization(context: vscode.ExtensionContext) {
     try {
-        const userId = await authenticateWithGitHub(context);
+        const githubUser = await authenticateWithGitHub(context);
 
-        if (!userId) {
+        if (!githubUser) {
             vscode.window.showErrorMessage("Tiamat: Authentication required to sync personalization settings");
             return;
         }
 
-        const result = await get(`${apiUrl}/api/personalization/${userId}`);
+        const result = await get(`${apiUrl}/api/personalization/${githubUser.id}`);
         const personalization = result.data.personalization || {"personalizedPrompt": ""};
 
         const config = vscode.workspace.getConfiguration();
@@ -30,14 +30,14 @@ export async function syncPersonalization(context: vscode.ExtensionContext) {
 
 export async function updatePersonalization(context: vscode.ExtensionContext, newPersonalization: string) {
     try {
-        const userId = await authenticateWithGitHub(context);
+        const githubUser = await authenticateWithGitHub(context);
 
-        if (!userId) {
+        if (!githubUser) {
             vscode.window.showErrorMessage("Tiamat: Authentication required to update personalization settings");
             return;
         }
 
-        await put(`${apiUrl}/api/personalization/${userId}`, { personalization: { personalizedPrompt: newPersonalization } });
+        await put(`${apiUrl}/api/personalization/${githubUser.id}`, { personalization: { personalizedPrompt: newPersonalization } });
         vscode.window.showInformationMessage("Tiamat: Personalization settings updated successfully");
     } catch (error) {
         vscode.window.showErrorMessage("Tiamat: Error updating personalization settings");
