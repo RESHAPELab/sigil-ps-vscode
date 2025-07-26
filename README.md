@@ -87,4 +87,4 @@ This section provides a simple overview of changes that are being made to this e
 
 ## Questions?
 
-If you have any questions, feel free to reach out to @pehilbert on GitHub.
+If you have any questions, feel free to reach out to [@pehilbert](https://github.com/pehilbert).
