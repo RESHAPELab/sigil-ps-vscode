@@ -1,6 +1,6 @@
 {
-    "name": "tiamat",
-    "displayName": "Tiamat",
+    "name": "sigil-cs2",
+    "displayName": "SIGIL-CS2",
     "description": "",
     "version": "0.2.0",
     "publisher": "RESHAPELab",
@@ -12,15 +12,15 @@
         "Chat"
     ],
     "activationEvents": [
-        "onChatParticipant:tiamat.Tiamat"
+        "onChatParticipant:sigil-cs2.Sigil"
     ],
     "main": "./out/extension.js",
     "contributes": {
         "chatParticipants": [
             {
-                "id": "tiamat.Tiamat",
-                "fullName": "Tiamat",
-                "name": "tiamat",
+                "id": "sigil-cs2.Sigil",
+                "fullName": "Sigil",
+                "name": "sigil-cs2",
                 "description": "Ask me anything...",
                 "isSticky": true,
                 "commands": []
@@ -34,36 +34,41 @@
         ],
         "commands": [
             {
-                "command": "tiamat.openPersonalization",
-                "title": "Open Personalization Settings"
+                "command": "sigil-cs2.openPersonalization",
+                "title": "Open SIGIL-CS2 Personalization Settings"
             }
         ],
         "configuration": {
-            "title": "Tiamat Personalization",
+            "title": "SIGIL-CS2 Personalization",
             "properties": {
-                "tiamat.persona": {
+                "sigil.persona": {
                     "type": "string",
                     "enum": [
-                        "Tiamat",
+                        "Default",
                         "Advanced"
                     ],
                     "enumDescriptions": [
-                        "The default behavior for Tiamat. A friendly computer science tutor intended for novice students, who will provide plenty of direct guidance.",
+                        "The default behavior for Sigil. A friendly computer science tutor intended for novice students, who will provide plenty of direct guidance.",
                         "Alternate behavior for more advanced students. Assumes more foundational knowledge, and encourages self-learning."
                     ],
-                    "default": "Tiamat",
-                    "description": "Currently active persona that Tiamat will embody in its responses."
+                    "default": "Default",
+                    "description": "Currently active persona that Sigil will embody in its responses."
                 },
-                "tiamat.personalizeResponses": {
+                "sigil.personalizeResponses": {
                     "type": "boolean",
                     "default": false,
-                    "description": "When enabled, Tiamat will attempt to create a personalized prompt when you provide feedback and use it to tailor its responses."
+                    "description": "When enabled, Sigil will attempt to create a personalized prompt when you provide feedback and use it to tailor its responses."
                 },
-                "tiamat.personalizedPrompt": {
+                "sigil.personalizedPrompt": {
                     "type": "string",
                     "default": "",
                     "editPresentation": "multilineText",
-                    "description": "Extra preferences that Tiamat will use to curate its responses for you."
+                    "description": "Extra preferences that Sigil will use to curate its responses for you."
+                },
+                "sigil.logChats": {
+                    "type": "boolean",
+                    "default": false,
+                    "description": "When this option is set to true, you consent that your interactions with SIGIL-CS2 may be anonymously collected for research purposes and written about in written research that will be publicly available. To reiterate, none of the collected data will contain identifying information about you, and no identifying information about you will appear in written reports. This data will include\n\n- your prompts,\n- the code you have open in VS Code, and\n- the chatbot's responses \n\nAdditionally, we will collect basic identifying information from the public GitHub profile you are using with the SIGIL-CS2. This data will not be publicly disclosed. This data will include your\n\n- username, \n- full name, and\n-email"
                 }
             }
         }
