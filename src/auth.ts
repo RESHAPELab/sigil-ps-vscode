@@ -25,7 +25,7 @@ export async function getUserData(accessToken: string) {
 }
 
 export async function authenticateWithGitHub(context: vscode.ExtensionContext): Promise<GitHubUser | null> {
-    let cachedToken = context.globalState.get<string>("tiamatAccessToken");
+    let cachedToken = context.globalState.get<string>("sigil-cs2_AccessToken");
 
     if (cachedToken) {
         const data = await getUserData(cachedToken);
@@ -40,8 +40,8 @@ export async function authenticateWithGitHub(context: vscode.ExtensionContext): 
         const session = await vscode.authentication.getSession('github', ['user:email'], { createIfNone: true });
         if (session) {
             vscode.window.showInformationMessage(`Authenticated as ${session.account.label}`);
-            await context.globalState.update("tiamatUserId", session.account.id);
-            await context.globalState.update("tiamatAccessToken", session.accessToken);
+            await context.globalState.update("sigil-cs2_UserId", session.account.id);
+            await context.globalState.update("sigil-cs2_AccessToken", session.accessToken);
             return await getUserData(session.accessToken);
         }
     } catch (error) {

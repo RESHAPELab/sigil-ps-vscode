@@ -11,11 +11,11 @@ const GOOD = 1;
 const BAD = 0;
 const GOOD_REASONS: string[] = ["Helpful", "Accurate", "Well Explained"];
 const BAD_REASONS: string[] = ["Incorrect", "Not Helpful", "Confusing"];
-const FEEDBACK_BUTTON_TEXT = "💬 Provide Feedback to Tiamat";
+const FEEDBACK_BUTTON_TEXT = "💬 Provide Feedback to Sigil";
 
 export function activate(context: vscode.ExtensionContext) {
 	// Logic for collecting and sending feedback to the server
-    vscode.commands.registerCommand('tiamat.handleFeedback', async (args) => {
+    vscode.commands.registerCommand('sigil-cs2.handleFeedback', async (args) => {
         try {
             console.log('Arguments:', args);
 
@@ -47,7 +47,7 @@ export function activate(context: vscode.ExtensionContext) {
             }
 
             let config = vscode.workspace.getConfiguration();
-            let personalize = config.get<boolean>("tiamat.personalizeResponses");
+            let personalize = config.get<boolean>("sigil.personalizeResponses");
 
             const apiResponse = await post(`${apiUrl}/api/feedback`, {rating: ratingEnum, reason: customReason, personalize, ...args});
             console.log('API Response:', apiResponse.data);
@@ -60,7 +60,7 @@ export function activate(context: vscode.ExtensionContext) {
                     'Open Personalization Settings'
                     ).then(selection => {
                         if (selection === 'Open Personalization Settings') {
-                            vscode.commands.executeCommand('tiamat.openPersonalization');
+                            vscode.commands.executeCommand('sigil-cs2.openPersonalization');
                         }
                     }
                 );
@@ -141,7 +141,7 @@ export function activate(context: vscode.ExtensionContext) {
                     }
                 });
 
-                history.push("Tiamat: " + fullMessage);
+                history.push("Sigil: " + fullMessage);
             }
         });
 
@@ -150,16 +150,17 @@ export function activate(context: vscode.ExtensionContext) {
         let githubUser = await authenticateWithGitHub(context);
 
         if (!githubUser) {
-            vscode.window.showErrorMessage("Tiamat: Authentication required to chat");
+            vscode.window.showErrorMessage("Sigil: Authentication required to chat");
             return;
         }
 
         let config = vscode.workspace.getConfiguration();
-        let personalize = config.get<boolean>("tiamat.personalizeResponses");
+        let personalize = config.get<boolean>("sigil.personalizeResponses");
+        let logChat = config.get<boolean>("sigil.logChats");
         
-        let personaConfig = config.inspect("tiamat.persona");
+        let personaConfig = config.inspect("sigil.persona");
         let defaultPersona = personaConfig?.defaultValue;
-        let chosenPersona = config.get<string>("tiamat.persona");
+        let chosenPersona = config.get<string>("sigil.persona");
 
         console.log("Persona config:", personaConfig);
 
@@ -177,10 +178,10 @@ export function activate(context: vscode.ExtensionContext) {
                 stream.markdown(`[]( conversation_id:${conversationId} )`);
             }
 
-            // get Tiamat response
+            // get Sigil response
             const apiResponse = await post(`${apiUrl}/api/prompt`, 
                 {userID: githubUser?.id, conversationID: conversationId, 
-                    code, message: request.prompt, history, personalize, persona, 
+                    code, message: request.prompt, history, personalize, persona, logChat,
                     userMetaData: {
                         login: githubUser.login,
                         email: githubUser.email,
@@ -192,7 +193,7 @@ export function activate(context: vscode.ExtensionContext) {
             var args = {userID: githubUser?.id, conversationID: conversationId, 
                 code: code, message: request.prompt, response: apiResponse.data.response};          
             stream.button({
-                command: 'tiamat.handleFeedback',
+                command: 'sigil-cs2.handleFeedback',
                 title: vscode.l10n.t(FEEDBACK_BUTTON_TEXT),
                 arguments: [args]
             });
@@ -205,7 +206,7 @@ export function activate(context: vscode.ExtensionContext) {
 	};
 
 	// create participant
-	const tutor = vscode.chat.createChatParticipant("tiamat.Tiamat", chatHandler);
+	const tutor = vscode.chat.createChatParticipant("sigil-cs2.Sigil", chatHandler);
 
 	// add icon to participant
 	tutor.iconPath = vscode.Uri.joinPath(context.extensionUri, 'tutor.jpeg');
@@ -217,10 +218,10 @@ export function activate(context: vscode.ExtensionContext) {
 
     vscode.workspace.onDidChangeConfiguration(async (e) => {
         if (
-            e.affectsConfiguration('tiamat.personalizedPrompt')
+            e.affectsConfiguration('sigil.personalizedPrompt')
         ) {
             const config = vscode.workspace.getConfiguration();
-            const personalization = config.get<string>('tiamat.personalizedPrompt');
+            const personalization = config.get<string>('sigil.personalizedPrompt');
 
             if (personalization) {
                 updatePersonalization(context, personalization);
@@ -230,22 +231,22 @@ export function activate(context: vscode.ExtensionContext) {
     
     // Allow user to manage personalization
     context.subscriptions.push(
-        vscode.commands.registerCommand('tiamat.openPersonalization', async () => {
-            vscode.window.showInformationMessage('Opening Tiamat Personalization settings...');
+        vscode.commands.registerCommand('sigil-cs2.openPersonalization', async () => {
+            vscode.window.showInformationMessage('Opening Sigil Personalization settings...');
 
             await syncPersonalization(context);
 
             vscode.commands.executeCommand(
                 'workbench.action.openSettings',
-                '@ext:RESHAPELab.tiamat'
+                '@ext:RESHAPELab.sigil-cs2'
             );
         })
     );
       
     const personalizationStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
-    personalizationStatusBarItem.text = '$(gear) Tiamat Personalization';
-    personalizationStatusBarItem.tooltip = 'View or modify your personalization settings for Tiamat';
-    personalizationStatusBarItem.command = 'tiamat.openPersonalization';
+    personalizationStatusBarItem.text = '$(gear) Sigil Personalization';
+    personalizationStatusBarItem.tooltip = 'View or modify your personalization settings for Sigil';
+    personalizationStatusBarItem.command = 'sigil-cs2.openPersonalization';
     personalizationStatusBarItem.show();
 
     context.subscriptions.push(personalizationStatusBarItem);
