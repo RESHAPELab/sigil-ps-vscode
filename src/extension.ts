@@ -15,7 +15,7 @@ const FEEDBACK_BUTTON_TEXT = "💬 Provide Feedback to Sigil";
 
 export function activate(context: vscode.ExtensionContext) {
 	// Logic for collecting and sending feedback to the server
-    vscode.commands.registerCommand('sigil-cs2.handleFeedback', async (args) => {
+    vscode.commands.registerCommand('sigil-ps.handleFeedback', async (args) => {
         try {
             console.log('Arguments:', args);
 
@@ -60,7 +60,7 @@ export function activate(context: vscode.ExtensionContext) {
                     'Open Personalization Settings'
                     ).then(selection => {
                         if (selection === 'Open Personalization Settings') {
-                            vscode.commands.executeCommand('sigil-cs2.openPersonalization');
+                            vscode.commands.executeCommand('sigil-ps.openPersonalization');
                         }
                     }
                 );
@@ -193,7 +193,7 @@ export function activate(context: vscode.ExtensionContext) {
             var args = {userID: githubUser?.id, conversationID: conversationId, 
                 code: code, message: request.prompt, response: apiResponse.data.response};          
             stream.button({
-                command: 'sigil-cs2.handleFeedback',
+                command: 'sigil-ps.handleFeedback',
                 title: vscode.l10n.t(FEEDBACK_BUTTON_TEXT),
                 arguments: [args]
             });
@@ -206,7 +206,7 @@ export function activate(context: vscode.ExtensionContext) {
 	};
 
 	// create participant
-	const tutor = vscode.chat.createChatParticipant("sigil-cs2.Sigil", chatHandler);
+	const tutor = vscode.chat.createChatParticipant("sigil-ps.Sigil", chatHandler);
 
 	// add icon to participant
 	tutor.iconPath = vscode.Uri.joinPath(context.extensionUri, 'tutor.jpeg');
@@ -231,14 +231,14 @@ export function activate(context: vscode.ExtensionContext) {
     
     // Allow user to manage personalization
     context.subscriptions.push(
-        vscode.commands.registerCommand('sigil-cs2.openPersonalization', async () => {
+        vscode.commands.registerCommand('sigil-ps.openPersonalization', async () => {
             vscode.window.showInformationMessage('Opening Sigil Personalization settings...');
 
             await syncPersonalization(context);
 
             vscode.commands.executeCommand(
                 'workbench.action.openSettings',
-                '@ext:RESHAPELab.sigil-cs2'
+                '@ext:RESHAPELab.sigil-ps'
             );
         })
     );
@@ -246,7 +246,7 @@ export function activate(context: vscode.ExtensionContext) {
     const personalizationStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
     personalizationStatusBarItem.text = '$(gear) Sigil Personalization';
     personalizationStatusBarItem.tooltip = 'View or modify your personalization settings for Sigil';
-    personalizationStatusBarItem.command = 'sigil-cs2.openPersonalization';
+    personalizationStatusBarItem.command = 'sigil-ps.openPersonalization';
     personalizationStatusBarItem.show();
 
     context.subscriptions.push(personalizationStatusBarItem);

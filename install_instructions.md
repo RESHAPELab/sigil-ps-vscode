@@ -1,6 +1,8 @@
-# Installing the Tiamat VS Code Extension (.vsix)
+# Installing the SIGIL-PS VS Code Extension (.vsix)
 
-This guide explains how to manually install the Tiamat VS Code extension for testing, either using the **command line** or the **VS Code UI**.
+**IMPORTANT:** This extension used to be called Tiamat. If you have downloaded a new version since the name change, ensure you uninstall the Tiamat version, as it is treated like two separate extensions.
+
+This guide explains how to manually install the SIGIL-PS VS Code extension for testing, either using the **command line** or the **VS Code UI**.
 
 ---
 
@@ -25,7 +27,7 @@ Download and save the `.vsix` file to a known location (e.g., `Downloads`).
    ```
    **Example:** If the `.vsix` file is in your `Downloads` folder:
    ```sh
-   code --install-extension ~/Downloads/tiamat-vscode-0.0.1.vsix
+   code --install-extension ~/Downloads/sigil-ps-0.0.3.vsix
    ```
 4. Wait for VS Code to install the extension. You should see a success message.
 
@@ -44,12 +46,12 @@ Download and save the `.vsix` file to a known location (e.g., `Downloads`).
 
 After installation, verify that the extension is installed:
 
-- Open the **Extensions** view (`Ctrl + Shift + X`), and check if **Tiamat** appears under "Installed Extensions".
+- Open the **Extensions** view (`Ctrl + Shift + X`), and check if **SIGIL-PS** appears under "Installed Extensions".
 - Alternatively, run the following command in the **Command Palette** (`Ctrl + Shift + P`):
   ```sh
   > Developer: Show Running Extensions
   ```
-  Ensure that **Tiamat** is listed, and the status says something like "Activation: 17ms"
+  Ensure that **SIGIL-PS** is listed, and the status says something like "Activation: 17ms"
 
 ---
 
