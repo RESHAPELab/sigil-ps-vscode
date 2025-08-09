@@ -6,40 +6,40 @@ import { Axios } from "axios";
 
 export async function syncPersonalization(context: vscode.ExtensionContext) {
     try {
-        const userId = await authenticateWithGitHub(context);
+        const githubUser = await authenticateWithGitHub(context);
 
-        if (!userId) {
-            vscode.window.showErrorMessage("Tiamat: Authentication required to sync personalization settings");
+        if (!githubUser) {
+            vscode.window.showErrorMessage("Sigil: Authentication required to sync personalization settings");
             return;
         }
 
-        const result = await get(`${apiUrl}/api/personalization/${userId}`);
+        const result = await get(`${apiUrl}/api/personalization/${githubUser.id}`);
         const personalization = result.data.personalization || {"personalizedPrompt": ""};
 
         const config = vscode.workspace.getConfiguration();
-        await config.update('tiamat.personalizedPrompt', personalization.personalizedPrompt, vscode.ConfigurationTarget.Global);
-        vscode.window.showInformationMessage("Tiamat: Personalization settings synced successfully");
+        await config.update('sigil.personalizedPrompt', personalization.personalizedPrompt, vscode.ConfigurationTarget.Global);
+        vscode.window.showInformationMessage("Sigil: Personalization settings synced successfully");
     } catch (error: AxiosError | any) {
         // No need to show a message if they simply don't have any personalization settings (404)
         // but show an error for other issues (e.g. network errors, server errors, etc.)
         if (error?.response && error?.response?.status !== 404) {
-            vscode.window.showErrorMessage("Tiamat: Error syncing personalization settings");
+            vscode.window.showErrorMessage("Sigil: Error syncing personalization settings");
         }
     }
 }
 
 export async function updatePersonalization(context: vscode.ExtensionContext, newPersonalization: string) {
     try {
-        const userId = await authenticateWithGitHub(context);
+        const githubUser = await authenticateWithGitHub(context);
 
-        if (!userId) {
-            vscode.window.showErrorMessage("Tiamat: Authentication required to update personalization settings");
+        if (!githubUser) {
+            vscode.window.showErrorMessage("Sigil: Authentication required to update personalization settings");
             return;
         }
 
-        await put(`${apiUrl}/api/personalization/${userId}`, { personalization: { personalizedPrompt: newPersonalization } });
-        vscode.window.showInformationMessage("Tiamat: Personalization settings updated successfully");
+        await put(`${apiUrl}/api/personalization/${githubUser.id}`, { personalization: { personalizedPrompt: newPersonalization } });
+        vscode.window.showInformationMessage("Sigil: Personalization settings updated successfully");
     } catch (error) {
-        vscode.window.showErrorMessage("Tiamat: Error updating personalization settings");
+        vscode.window.showErrorMessage("Sigil: Error updating personalization settings");
     }
 }

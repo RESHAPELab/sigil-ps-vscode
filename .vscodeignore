@@ -10,4 +10,5 @@ vsc-extension-quickstart.md
 **/*.ts
 **/.vscode-test.*
 
+node_modules/sigil-ps
 node_modules/tiamat
