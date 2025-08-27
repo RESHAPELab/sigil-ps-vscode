@@ -39,7 +39,7 @@
             }
         ],
         "configuration": {
-            "title": "SIGIL-PS Personalization",
+            "title": "SIGIL-PS Settings",
             "properties": {
                 "sigil.persona": {
                     "type": "string",
@@ -69,6 +69,18 @@
                     "type": "boolean",
                     "default": false,
                     "description": "When this option is set to true, you consent that your interactions with SIGIL-PS may be anonymously collected for research purposes and written about in written research that will be publicly available. To reiterate, none of the collected data will contain identifying information about you, and no identifying information about you will appear in written reports. This data will include\n\n- your prompts,\n- the code you have open in VS Code, and\n- the chatbot's responses \n\nAdditionally, we will collect basic identifying information from the public GitHub profile you are using with the SIGIL-PS. This data will not be publicly disclosed. This data will include your\n\n- username, \n- full name, and\n-email"
+                },
+                "sigil.developerSettings.test": {
+                    "type": "boolean",
+                    "default": false,
+                    "scope": "machine",
+                    "description": "Development setting: when enabled, SIGIL-PS will use the test environment for the backend."
+                },
+                "sigil.developerSettings.apiUrl": {
+                    "type": "string",
+                    "default": "",
+                    "scope": "machine",
+                    "description": "Development setting: custom base URL for the SIGIL-PS API for testing purposes (i.e. localhost). Only applies when in test environment."
                 }
             }
         }

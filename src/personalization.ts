@@ -1,4 +1,4 @@
-import apiUrl from "./config";
+import getApiUrl from "./apiConfig";
 import { authenticateWithGitHub } from "./auth";
 import {AxiosError, get, put} from "axios";
 import * as vscode from 'vscode';
@@ -13,7 +13,7 @@ export async function syncPersonalization(context: vscode.ExtensionContext) {
             return;
         }
 
-        const result = await get(`${apiUrl}/api/personalization/${githubUser.id}`);
+        const result = await get(`${getApiUrl()}/api/personalization/${githubUser.id}`);
         const personalization = result.data.personalization || {"personalizedPrompt": ""};
 
         const config = vscode.workspace.getConfiguration();
@@ -37,7 +37,7 @@ export async function updatePersonalization(context: vscode.ExtensionContext, ne
             return;
         }
 
-        await put(`${apiUrl}/api/personalization/${githubUser.id}`, { personalization: { personalizedPrompt: newPersonalization } });
+        await put(`${getApiUrl()}/api/personalization/${githubUser.id}`, { personalization: { personalizedPrompt: newPersonalization } });
         vscode.window.showInformationMessage("Sigil: Personalization settings updated successfully");
     } catch (error) {
         vscode.window.showErrorMessage("Sigil: Error updating personalization settings");
