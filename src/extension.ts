@@ -12,8 +12,29 @@ const BAD = 0;
 const GOOD_REASONS: string[] = ["Helpful", "Accurate", "Well Explained"];
 const BAD_REASONS: string[] = ["Incorrect", "Not Helpful", "Confusing"];
 const FEEDBACK_BUTTON_TEXT = "💬 Provide Feedback to Sigil";
+const academicIntegrityWelcomeMessage = `
+SIGIL-PS Academic Integrity Notice
+
+Welcome to SIGIL-PS, your course's approved tutoring assistant.
+
+This tool was designed to support your learning by providing guided help based on research into how computer science students best seek help. You are encouraged to use SIGIL-PS whenever you need assistance.
+
+⚠️ Important: Using unapproved AI tools such as GitHub Copilot, ChatGPT, or other code-generation assistants may constitute an academic integrity violation in this course. These tools can provide solutions without supporting your learning, and their use may be indistinguishable from plagiarism.
+
+✅ What you should do:
+Use SIGIL-PS to ask questions, get hints, and develop understanding.
+Follow its guidance to practice problem solving, rather than copying answers.
+Reach out to your instructor if you're unsure about what tools are allowed.
+
+By continuing, you acknowledge that you understand these guidelines and agree to use SIGIL-PS responsibly.`;
 
 export function activate(context: vscode.ExtensionContext) {
+    // Display a welcome pop-up to guide users on getting started with Sigil
+    if (!context.globalState.get('sigilPSHasShownWelcome')) {
+        vscode.window.showInformationMessage(academicIntegrityWelcomeMessage);
+        context.globalState.update('sigilPSHasShownWelcome', true);
+    }
+
 	// Logic for collecting and sending feedback to the server
     vscode.commands.registerCommand('sigil-ps.handleFeedback', async (args) => {
         try {
@@ -253,3 +274,4 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 export function deactivate() { }
+
