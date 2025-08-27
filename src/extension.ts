@@ -12,8 +12,7 @@ const BAD = 0;
 const GOOD_REASONS: string[] = ["Helpful", "Accurate", "Well Explained"];
 const BAD_REASONS: string[] = ["Incorrect", "Not Helpful", "Confusing"];
 const FEEDBACK_BUTTON_TEXT = "💬 Provide Feedback to Sigil";
-const academicIntegrityWelcomeMessage = `
-SIGIL-PS Academic Integrity Notice
+const academicIntegrityWelcomeMessage = `SIGIL-PS Academic Integrity Notice
 
 Welcome to SIGIL-PS, your course's approved tutoring assistant.
 
@@ -31,7 +30,7 @@ By continuing, you acknowledge that you understand these guidelines and agree to
 export function activate(context: vscode.ExtensionContext) {
     // Display a welcome pop-up to guide users on getting started with Sigil
     if (!context.globalState.get('sigilPSHasShownWelcome')) {
-        vscode.window.showInformationMessage(academicIntegrityWelcomeMessage);
+        vscode.window.showInformationMessage(academicIntegrityWelcomeMessage, {modal: true});
         context.globalState.update('sigilPSHasShownWelcome', true);
     }
 
