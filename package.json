@@ -1,8 +1,9 @@
 {
     "name": "sigil-ps",
     "displayName": "SIGIL-PS",
-    "description": "",
-    "version": "0.3.0",
+    "icon": "images/logo.jpeg",
+    "description": "The approved LLM assistant for NAU's CS 136 course.",
+    "version": "1.0.0",
     "publisher": "RESHAPELab",
     "engines": {
         "vscode": "^1.93.0"
@@ -21,7 +22,7 @@
                 "id": "sigil-ps.Sigil",
                 "fullName": "Sigil",
                 "name": "sigil-ps",
-                "description": "Ask me anything...",
+                "description": "Ask me anything! I'm here to guide you.",
                 "isSticky": true,
                 "commands": []
             }

@@ -229,7 +229,7 @@ export function activate(context: vscode.ExtensionContext) {
 	const tutor = vscode.chat.createChatParticipant("sigil-ps.Sigil", chatHandler);
 
 	// add icon to participant
-	tutor.iconPath = vscode.Uri.joinPath(context.extensionUri, 'tutor.jpeg');
+	tutor.iconPath = vscode.Uri.joinPath(context.extensionUri, 'images/avatar.jpeg');
 
     // Personalization management
 
