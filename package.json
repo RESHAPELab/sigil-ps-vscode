@@ -45,12 +45,10 @@
                 "sigil.persona": {
                     "type": "string",
                     "enum": [
-                        "Default",
-                        "Advanced"
+                        "Default"
                     ],
                     "enumDescriptions": [
-                        "The default behavior for Sigil. A friendly computer science tutor intended for novice students, who will provide plenty of direct guidance.",
-                        "Alternate behavior for more advanced students. Assumes more foundational knowledge, and encourages self-learning."
+                        "The default behavior for Sigil. A friendly computer science tutor intended for novice students, who will provide plenty of direct guidance."
                     ],
                     "default": "Default",
                     "description": "Currently active persona that Sigil will embody in its responses."
