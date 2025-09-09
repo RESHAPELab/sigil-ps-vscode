@@ -64,10 +64,10 @@
                     "editPresentation": "multilineText",
                     "description": "Extra preferences that Sigil will use to curate its responses for you."
                 },
-                "sigil.logChats": {
+                "sigil.fieldStudyOptIn": {
                     "type": "boolean",
                     "default": false,
-                    "description": "When this option is set to true, you consent that your interactions with SIGIL-PS may be anonymously collected for research purposes and written about in written research that will be publicly available. To reiterate, none of the collected data will contain identifying information about you, and no identifying information about you will appear in written reports. This data will include\n\n- your prompts,\n- the code you have open in VS Code, and\n- the chatbot's responses \n\nAdditionally, we will collect basic identifying information from the public GitHub profile you are using with the SIGIL-PS. This data will not be publicly disclosed. This data will include your\n\n- username, \n- full name, and\n-email"
+                    "description": "When this option is set to true, you consent that your interactions with SIGIL-PS may be anonymously used in a publication from RESHAPE Lab. You may opt in or out at any time."
                 },
                 "sigil.developerSettings.test": {
                     "type": "boolean",
