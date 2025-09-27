@@ -3,7 +3,7 @@ import {post} from 'axios';
 import * as fs from 'fs';
 import {v4 as uuidv4} from 'uuid';
 import {authenticateWithGitHub} from './auth';
-import {syncPersonalization, updatePersonalization} from './personalization';
+import {syncSigilSettings, updateOptIn, updatePersonalization} from './personalization';
 import getApiUrl from "./apiConfig";
 
 const MAX_HISTORY_LENGTH = 6;
@@ -73,7 +73,7 @@ export function activate(context: vscode.ExtensionContext) {
             console.log('API Response:', apiResponse.data);
             
             if (personalize) {
-                await syncPersonalization(context);
+                await syncSigilSettings(context);
                 
                 vscode.window.showInformationMessage(
                     'Thank you for your feedback! Personalization has been updated.',
@@ -176,7 +176,6 @@ export function activate(context: vscode.ExtensionContext) {
 
         let config = vscode.workspace.getConfiguration();
         let personalize = config.get<boolean>("sigil.personalizeResponses");
-        let logChat = config.get<boolean>("sigil.logChats");
         
         let personaConfig = config.inspect("sigil.persona");
         let defaultPersona = personaConfig?.defaultValue;
@@ -201,7 +200,7 @@ export function activate(context: vscode.ExtensionContext) {
             // get Sigil response
             const apiResponse = await post(`${getApiUrl()}/api/prompt`, 
                 {userID: githubUser?.id, conversationID: conversationId, 
-                    code, message: request.prompt, history, personalize, persona, logChat,
+                    code, message: request.prompt, history, personalize, persona, logChat: true,
                     userMetaData: {
                         login: githubUser.login,
                         email: githubUser.email,
@@ -233,13 +232,11 @@ export function activate(context: vscode.ExtensionContext) {
 
     // Personalization management
 
-    // Sync personalization with backend
-    syncPersonalization(context);
+    // Sync user settings with backend
+    syncSigilSettings(context);
 
     vscode.workspace.onDidChangeConfiguration(async (e) => {
-        if (
-            e.affectsConfiguration('sigil.personalizedPrompt')
-        ) {
+        if (e.affectsConfiguration('sigil.personalizedPrompt')) {
             const config = vscode.workspace.getConfiguration();
             const personalization = config.get<string>('sigil.personalizedPrompt');
 
@@ -247,7 +244,16 @@ export function activate(context: vscode.ExtensionContext) {
                 updatePersonalization(context, personalization);
             }
         }
-    });
+
+        if (e.affectsConfiguration('sigil.fieldStudyOptIn')) {
+            const config = vscode.workspace.getConfiguration();
+            const newOptIn = config.get<boolean>('sigil.fieldStudyOptIn');
+
+            if (newOptIn !== undefined) {
+                updateOptIn(context, newOptIn);
+            }
+        }
+    }); 
     
     // Allow user to manage personalization
     context.subscriptions.push(
@@ -255,7 +261,7 @@ export function activate(context: vscode.ExtensionContext) {
             console.log("API URL:", getApiUrl());
             vscode.window.showInformationMessage('Opening Sigil Personalization settings...');
 
-            await syncPersonalization(context);
+            await syncSigilSettings(context);
 
             vscode.commands.executeCommand(
                 'workbench.action.openSettings',
