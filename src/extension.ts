@@ -1,8 +1,9 @@
 import * as vscode from 'vscode';
 import {post} from 'axios';
 import * as fs from 'fs';
+import * as path from 'path';
 import {v4 as uuidv4} from 'uuid';
-import {authenticateWithGitHub} from './auth';
+import {authenticateWithGitHub, GitHubUser} from './auth';
 import {syncSigilSettings, updateOptIn, updatePersonalization} from './personalization';
 import getApiUrl from "./apiConfig";
 
@@ -26,6 +27,145 @@ Follow its guidance to practice problem solving, rather than copying answers.
 Reach out to your instructor if you're unsure about what tools are allowed.
 
 By continuing, you acknowledge that you understand these guidelines and agree to use SIGIL-PS responsibly.`;
+
+// Helper functions for code tracking
+async function updateTrackedFiles(context?: vscode.ExtensionContext): Promise<void> {
+    const config = vscode.workspace.getConfiguration();
+
+    // Get current tracked files list
+    const currentTrackedFiles = config.get<string[]>("sigil.codeTracking.trackedFiles") || [];
+
+    // Get all files in the workspace
+    const workspaceFiles = await vscode.workspace.findFiles(
+        '**/*',
+        '{**/node_modules/**,**/.venv/**,**/venv/**,**/env/**,**/bin/**,**/build/**,**/dist/**,**/out/**,**/target/**,**/.git/**,**/__pycache__/**,**/coverage/**,**/.pytest_cache/**,**/.mypy_cache/**,**/CMakeFiles/**,**/Debug/**,**/Release/**}'
+    );
+
+    // Filter to only include common code file extensions
+    const codeFiles = workspaceFiles.filter(uri => {
+        const ext = path.extname(uri.fsPath).toLowerCase();
+        return ['.js', '.ts', '.tsx', '.jsx', '.py', '.java', '.cpp', '.c', '.cs', '.php', '.rb', '.go', '.rs', '.swift', '.kt'].includes(ext);
+    });
+
+    // Convert to relative paths for storage
+    const relativePaths = codeFiles.map(uri => {
+        const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
+        if (workspaceFolder) {
+            return path.relative(workspaceFolder.uri.fsPath, uri.fsPath);
+        }
+        return uri.fsPath;
+    });
+
+    // Find new files that weren't in the previous tracked list
+    const newFiles = relativePaths.filter(filePath => !currentTrackedFiles.includes(filePath));
+
+    // Update the configuration
+    await config.update("sigil.codeTracking.trackedFiles", relativePaths, vscode.ConfigurationTarget.Workspace);
+    
+    console.log(`Updated tracked files list with ${relativePaths.length} files (${newFiles.length} new)`);
+
+    // Send new files to API if there are any and user is authenticated
+    if (newFiles.length > 0 && context) {
+        try {
+            const githubUser = await authenticateWithGitHub(context);
+            
+            if (githubUser) {
+                for (const relativeFilePath of newFiles) {
+                    // Find the actual URI for this relative path
+                    const matchingFile = codeFiles.find(uri => {
+                        const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
+                        if (workspaceFolder) {
+                            const relativePath = path.relative(workspaceFolder.uri.fsPath, uri.fsPath);
+                            return relativePath === relativeFilePath;
+                        }
+                        return uri.fsPath === relativeFilePath;
+                    });
+
+                    if (matchingFile) {
+                        // Try to get the document if it's already open, otherwise read from disk
+                        let document = vscode.workspace.textDocuments.find(doc => doc.uri.fsPath === matchingFile.fsPath);
+                        
+                        if (document) {
+                            await sendCodeChangeToAPI(document, githubUser);
+                        } else {
+                            // Create a temporary document-like object for files not currently open
+                            try {
+                                const fileContent = fs.readFileSync(matchingFile.fsPath, 'utf8');
+                                const tempDoc = {
+                                    uri: matchingFile,
+                                    getText: () => fileContent
+                                } as vscode.TextDocument;
+                                await sendCodeChangeToAPI(tempDoc, githubUser);
+                            } catch (error) {
+                                console.error(`[CODE TRACKING] Error reading file ${relativeFilePath}:`, error);
+                            }
+                        }
+                    }
+                }
+                console.log(`[CODE TRACKING] Sent ${newFiles.length} new files to API`);
+            } else {
+                console.log(`[CODE TRACKING] Found ${newFiles.length} new files but user not authenticated - skipping API calls`);
+            }
+        } catch (error) {
+            console.error('[CODE TRACKING] Error sending new files to API:', error);
+        }
+    }
+}
+
+async function isFileTracked(document: vscode.TextDocument): Promise<boolean> {
+    const config = vscode.workspace.getConfiguration();
+
+    const trackedFiles = config.get<string[]>("sigil.codeTracking.trackedFiles") || [];
+    
+    // Convert document path to relative path for comparison
+    const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
+    let relativePath: string;
+    
+    if (workspaceFolder) {
+        relativePath = path.relative(workspaceFolder.uri.fsPath, document.uri.fsPath);
+    } else {
+        relativePath = document.uri.fsPath;
+    }
+
+    return trackedFiles.includes(relativePath);
+}
+
+async function sendCodeChangeToAPI(document: vscode.TextDocument, githubUser: GitHubUser): Promise<void> {
+    try {
+        // TODO: Implement API call to send code changes
+        // This is a stub as requested - will need to be implemented later
+        
+        const workspaceFolder = vscode.workspace.getWorkspaceFolder(document.uri);
+        let uniqueFilePath: string;
+        
+        if (workspaceFolder) {
+            // Get the workspace folder name and relative path
+            const workspaceName = path.basename(workspaceFolder.uri.fsPath);
+            const relativePath = path.relative(workspaceFolder.uri.fsPath, document.uri.fsPath);
+            uniqueFilePath = `${workspaceName}/${relativePath.replace(/\\/g, '/')}`;
+        } else {
+            // Fallback to just the filename if no workspace folder
+            uniqueFilePath = path.basename(document.uri.fsPath);
+        }
+        
+        const fileContent = document.getText();
+        
+        console.log(`[CODE TRACKING] File saved: ${uniqueFilePath}`);
+        console.log(`[CODE TRACKING] Content length: ${fileContent.length} characters`);
+        console.log(`[CODE TRACKING] User: ${githubUser?.login || 'unknown'}`);
+        
+        const apiResponse = await post(`${getApiUrl()}/api/users/codeChange`, {
+            userID: githubUser?.id,
+            filename: uniqueFilePath,
+            filePath: document.uri.fsPath,
+            content: fileContent
+        });
+        console.log('Code change API response:', apiResponse.data);
+        
+    } catch (error) {
+        console.error('Error sending code change to API:', error);
+    }
+}
 
 export function activate(context: vscode.ExtensionContext) {
     // Display a welcome pop-up to guide users on getting started with Sigil
@@ -190,6 +330,9 @@ export function activate(context: vscode.ExtensionContext) {
         }
 
         try {
+            // Update tracked files list when chat is used
+            await updateTrackedFiles(context);
+            
             // if we didn't find conversation ID in the history, create a new one in this message
             if (!conversationId) {
                 conversationId = uuidv4();
@@ -230,10 +373,30 @@ export function activate(context: vscode.ExtensionContext) {
 	// add icon to participant
 	tutor.iconPath = vscode.Uri.joinPath(context.extensionUri, 'images/avatar.jpeg');
 
+    // Code history
+
+    vscode.workspace.onDidSaveTextDocument(async (doc) => {
+        const fileName = doc.uri.path.split("/").pop();
+        console.log("Saved", fileName, "Content:", doc.getText());
+        
+        // Check if this file is being tracked
+        if (await isFileTracked(doc)) {
+            const githubUser = await authenticateWithGitHub(context);
+            if (githubUser) {
+                await sendCodeChangeToAPI(doc, githubUser);
+            } else {
+                console.log('[CODE TRACKING] Skipping code change tracking - user not authenticated');
+            }
+        }
+    });
+
     // Personalization management
 
     // Sync user settings with backend
     syncSigilSettings(context);
+
+    // Initialize code tracking
+    updateTrackedFiles(context);
 
     vscode.workspace.onDidChangeConfiguration(async (e) => {
         if (e.affectsConfiguration('sigil.personalizedPrompt')) {

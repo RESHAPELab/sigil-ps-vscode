@@ -3,7 +3,7 @@
     "displayName": "SIGIL-PS",
     "icon": "images/logo.jpeg",
     "description": "The approved LLM assistant for NAU's CS 136 course.",
-    "version": "1.1.0",
+    "version": "1.2.0",
     "publisher": "RESHAPELab",
     "engines": {
         "vscode": "^1.93.0"
@@ -68,6 +68,14 @@
                     "type": "boolean",
                     "default": false,
                     "description": "When this option is set to true, you consent that your interactions with SIGIL-PS may be anonymously used in a publication from RESHAPE Lab. You may opt in or out at any time."
+                },
+                "sigil.codeTracking.trackedFiles": {
+                    "type": "array",
+                    "items": {
+                        "type": "string"
+                    },
+                    "default": [],
+                    "description": "List of file paths currently being tracked for code changes. This list is automatically updated when you interact with the chat."
                 },
                 "sigil.developerSettings.test": {
                     "type": "boolean",
