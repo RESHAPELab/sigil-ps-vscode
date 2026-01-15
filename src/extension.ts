@@ -1,9 +1,9 @@
 import * as vscode from 'vscode';
-import {post} from 'axios';
+import { post } from 'axios';
 import * as fs from 'fs';
-import {v4 as uuidv4} from 'uuid';
-import {authenticateWithGitHub} from './auth';
-import {syncSigilSettings, updateOptIn, updatePersonalization} from './personalization';
+import { v4 as uuidv4 } from 'uuid';
+import { authenticateWithGitHub } from './auth';
+import { syncSigilSettings, updateOptIn, updatePersonalization } from './personalization';
 import getApiUrl from "./apiConfig";
 
 const MAX_HISTORY_LENGTH = 6;
@@ -30,11 +30,11 @@ By continuing, you acknowledge that you understand these guidelines and agree to
 export function activate(context: vscode.ExtensionContext) {
     // Display a welcome pop-up to guide users on getting started with Sigil
     if (!context.globalState.get('sigilPSHasShownWelcome')) {
-        vscode.window.showInformationMessage(academicIntegrityWelcomeMessage, {modal: true});
+        vscode.window.showInformationMessage(academicIntegrityWelcomeMessage, { modal: true });
         context.globalState.update('sigilPSHasShownWelcome', true);
     }
 
-	// Logic for collecting and sending feedback to the server
+    // Logic for collecting and sending feedback to the server
     vscode.commands.registerCommand('sigil-ps.handleFeedback', async (args) => {
         try {
             console.log('Arguments:', args);
@@ -69,20 +69,20 @@ export function activate(context: vscode.ExtensionContext) {
             let config = vscode.workspace.getConfiguration();
             let personalize = config.get<boolean>("sigil.personalizeResponses");
 
-            const apiResponse = await post(`${getApiUrl()}/api/feedback`, {rating: ratingEnum, reason: customReason, personalize, ...args});
+            const apiResponse = await post(`${getApiUrl()}/api/feedback`, { rating: ratingEnum, reason: customReason, personalize, ...args });
             console.log('API Response:', apiResponse.data);
-            
+
             if (personalize) {
                 await syncSigilSettings(context);
-                
+
                 vscode.window.showInformationMessage(
                     'Thank you for your feedback! Personalization has been updated.',
                     'Open Personalization Settings'
-                    ).then(selection => {
-                        if (selection === 'Open Personalization Settings') {
-                            vscode.commands.executeCommand('sigil-ps.openPersonalization');
-                        }
+                ).then(selection => {
+                    if (selection === 'Open Personalization Settings') {
+                        vscode.commands.executeCommand('sigil-ps.openPersonalization');
                     }
+                }
                 );
             } else {
                 vscode.window.showInformationMessage("Thank you for your feedback!");
@@ -95,7 +95,7 @@ export function activate(context: vscode.ExtensionContext) {
     });
 
     // Handles responses to chat prompts
-	const chatHandler: vscode.ChatRequestHandler = async (request: vscode.ChatRequest, chatContext: vscode.ChatContext, stream: vscode.ChatResponseStream, token: vscode.CancellationToken) => {
+    const chatHandler: vscode.ChatRequestHandler = async (request: vscode.ChatRequest, chatContext: vscode.ChatContext, stream: vscode.ChatResponseStream, token: vscode.CancellationToken) => {
         console.log("User message:", request.prompt);
         console.log("Token:", token);
         console.log("References:", request.references);
@@ -103,8 +103,27 @@ export function activate(context: vscode.ExtensionContext) {
 
         let code = "";
 
+        // Automatically include current file and selection context (replaces Copilot's "Current file" feature)
+        const activeEditor = vscode.window.activeTextEditor;
+        if (activeEditor) {
+            const document = activeEditor.document;
+            const selection = activeEditor.selection;
+            const fileName = document.fileName.split(/[/\\]/).pop() || document.fileName;
+
+            // Check if there's a selection (non-empty)
+            if (!selection.isEmpty) {
+                const selectedText = document.getText(selection);
+                code += `Current file selection (${fileName}):\n${selectedText}\n\n`;
+            } else {
+                // If no selection, include the entire current file
+                const fullText = document.getText();
+                code += `Current file (${fileName}):\n${fullText}\n\n`;
+            }
+        }
+
         console.log("\nRelevant references: ");
-        
+
+        // Process file references from VSCode's native chat UI (drag-and-drop, file picker, etc.)
         request.references.forEach((ref) => {
             if (ref.value instanceof vscode.Location) {
                 console.log(ref, "is a Location");
@@ -113,11 +132,29 @@ export function activate(context: vscode.ExtensionContext) {
                 const uri = ref.value.uri;
                 const range = ref.value.range;
 
-                const document = vscode.workspace.textDocuments.find((doc) => doc.uri.fsPath === uri.fsPath);
+                // Use VSCode's native workspace API to find the document
+                const document = vscode.workspace.textDocuments.find((doc) => doc.uri.toString() === uri.toString());
 
                 if (document) {
-                    const fileName = uri.path.split("/").pop();
-                    code += (ref.modelDescription || "File provided for context") + " (" + fileName + ")" + ":\n" + document?.getText(range);
+                    const fileName = uri.path.split("/").pop() || uri.path.split("\\").pop() || uri.fsPath;
+                    const selectedText = document.getText(range);
+                    code += "\n" + (ref.modelDescription || "File provided for context") + " (" + fileName + "):\n" + selectedText + "\n";
+                } else {
+                    // If document isn't open, try to read from filesystem using native Node.js APIs
+                    try {
+                        const fileContent = fs.readFileSync(uri.fsPath, 'utf8');
+                        const fileName = uri.path.split("/").pop() || uri.path.split("\\").pop() || uri.fsPath;
+                        // Extract the range if possible, otherwise include full file
+                        if (range && !range.isEmpty) {
+                            const lines = fileContent.split('\n');
+                            const rangeText = lines.slice(range.start.line, range.end.line + 1).join('\n');
+                            code += "\n" + (ref.modelDescription || "File provided for context") + " (" + fileName + "):\n" + rangeText + "\n";
+                        } else {
+                            code += "\n" + (ref.modelDescription || "File provided for context") + " (" + fileName + "):\n" + fileContent + "\n";
+                        }
+                    } catch (error) {
+                        console.error("Error reading file:", error);
+                    }
                 }
             } else if (ref.value instanceof vscode.Uri) {
                 console.log(ref, "is a URI");
@@ -125,12 +162,20 @@ export function activate(context: vscode.ExtensionContext) {
 
                 const uri = ref.value;
 
-                const fileContent = fs.readFileSync(uri.fsPath, 'utf8');
-
-                console.log("File content:", fileContent);
-
-                const fileName = uri.path.split("/").pop();
-                code += "\n" + (ref.modelDescription || "File provided for context") + " (" + fileName + ")" + ":\n" + fileContent + "\n";
+                try {
+                    // Use native Node.js filesystem API to read file content
+                    const fileContent = fs.readFileSync(uri.fsPath, 'utf8');
+                    const fileName = uri.path.split("/").pop() || uri.path.split("\\").pop() || uri.fsPath;
+                    code += "\n" + (ref.modelDescription || "File provided for context") + " (" + fileName + "):\n" + fileContent + "\n";
+                } catch (error) {
+                    console.error("Error reading file:", error);
+                    // Try to find it in open documents as fallback
+                    const document = vscode.workspace.textDocuments.find((doc) => doc.uri.toString() === uri.toString());
+                    if (document) {
+                        const fileName = uri.path.split("/").pop() || uri.path.split("\\").pop() || uri.fsPath;
+                        code += "\n" + (ref.modelDescription || "File provided for context") + " (" + fileName + "):\n" + document.getText() + "\n";
+                    }
+                }
             }
         });
         console.log("Final code:");
@@ -146,7 +191,7 @@ export function activate(context: vscode.ExtensionContext) {
                 let fullMessage = '';
                 item.response.forEach(r => {
                     const mdPart = r as vscode.ChatResponseMarkdownPart;
-                    
+
                     let content = mdPart.value.value;
 
                     if (content) {
@@ -156,7 +201,7 @@ export function activate(context: vscode.ExtensionContext) {
                             conversationId = match[1] ?? undefined;
                             content = content.replace(/\[\]\( conversation_id:(\S+) \)/, '');
                         }
-                        
+
                         fullMessage += content;
                     }
                 });
@@ -176,7 +221,7 @@ export function activate(context: vscode.ExtensionContext) {
 
         let config = vscode.workspace.getConfiguration();
         let personalize = config.get<boolean>("sigil.personalizeResponses");
-        
+
         let personaConfig = config.inspect("sigil.persona");
         let defaultPersona = personaConfig?.defaultValue;
         let chosenPersona = config.get<string>("sigil.persona");
@@ -198,19 +243,23 @@ export function activate(context: vscode.ExtensionContext) {
             }
 
             // get Sigil response
-            const apiResponse = await post(`${getApiUrl()}/api/prompt`, 
-                {userID: githubUser?.id, conversationID: conversationId, 
+            const apiResponse = await post(`${getApiUrl()}/api/prompt`,
+                {
+                    userID: githubUser?.id, conversationID: conversationId,
                     code, message: request.prompt, history, personalize, persona, logChat: true,
                     userMetaData: {
                         login: githubUser.login,
                         email: githubUser.email,
                         name: githubUser.name
-                }});
+                    }
+                });
             stream.markdown(apiResponse.data.response);
-            
+
             // set up feedback button
-            var args = {userID: githubUser?.id, conversationID: conversationId, 
-                code: code, message: request.prompt, response: apiResponse.data.response};          
+            var args = {
+                userID: githubUser?.id, conversationID: conversationId,
+                code: code, message: request.prompt, response: apiResponse.data.response
+            };
             stream.button({
                 command: 'sigil-ps.handleFeedback',
                 title: vscode.l10n.t(FEEDBACK_BUTTON_TEXT),
@@ -221,14 +270,14 @@ export function activate(context: vscode.ExtensionContext) {
             stream.markdown("I'm sorry, I'm having trouble connecting to the server. Please try again later.");
         }
 
-		return;
-	};
+        return;
+    };
 
-	// create participant
-	const tutor = vscode.chat.createChatParticipant("sigil-ps.Sigil", chatHandler);
+    // create participant
+    const tutor = vscode.chat.createChatParticipant("sigil-ps.Sigil", chatHandler);
 
-	// add icon to participant
-	tutor.iconPath = vscode.Uri.joinPath(context.extensionUri, 'images/avatar.jpeg');
+    // add icon to participant
+    tutor.iconPath = vscode.Uri.joinPath(context.extensionUri, 'images/avatar.jpeg');
 
     // Personalization management
 
@@ -253,8 +302,8 @@ export function activate(context: vscode.ExtensionContext) {
                 updateOptIn(context, newOptIn);
             }
         }
-    }); 
-    
+    });
+
     // Allow user to manage personalization
     context.subscriptions.push(
         vscode.commands.registerCommand('sigil-ps.openPersonalization', async () => {
@@ -269,7 +318,7 @@ export function activate(context: vscode.ExtensionContext) {
             );
         })
     );
-      
+
     const personalizationStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
     personalizationStatusBarItem.text = '$(gear) Sigil Personalization';
     personalizationStatusBarItem.tooltip = 'View or modify your personalization settings for Sigil';

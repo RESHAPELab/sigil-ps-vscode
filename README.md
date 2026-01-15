@@ -3,13 +3,13 @@ SIGIL-PS, Stepwise Instructional Guide for Independently Learning Programming Sk
 
 ## Features
 
-### Copilot Chat Participant
-This extension contributes a chat participant for Copilot, which implements the intended behavior through a third-party backend.
+### VSCode Chat Participant
+This extension contributes a chat participant for VSCode's native Chat view, which implements the intended behavior through a third-party backend. The extension works entirely independently of GitHub Copilot.
 
 ### File Context
-Sigil can currently accept context from your files in two different ways:
-1. You can provide the content of the file you are currently working on, as indicated by the "Current file" label in the Copilot window. You can also focus on a specific part of your code by simply highlighting it.
-2. You can explicitly reference other files in your message by typing `#` and then the file name. When you do this, an autocomplete should appear to help you select files.
+Sigil automatically includes context from your files in the following ways:
+1. **Current File**: The extension automatically includes the content of the file you are currently working on. If you have text selected, only the selected portion is included. If no text is selected, the entire file is included.
+2. **Additional Files**: You can attach additional files to your chat message using VSCode's native chat interface. Use the file attachment button in the chat input area, or drag and drop files into the chat. These files will be automatically included as context for Sigil.
 
 ## Requirements
 
@@ -34,13 +34,18 @@ Once everything is set up, open the project in VS Code. Navigate to the "Run and
 
 ![Run and Debug Panel](/images/how_to_run.png)
 
-In this new window, [open a Copilot window](https://code.visualstudio.com/docs/copilot/getting-started-chat#:~:text=Press%20Ctrl%2BI%20on%20your,make%20the%20port%20number%20configurable.), and type `@sigil-ps` before your message. If everything is set up correctly, it should be automatically highlighted, as shown below.
+In this new window, open VSCode's Chat view by going to **View > Chat** or pressing `Ctrl+L` (or `Cmd+L` on Mac). Type `@sigil-ps` before your message to interact with Sigil. If everything is set up correctly, it should be automatically highlighted, as shown below.
 
 ![Talking to Sigil](/images/chat_panel.png)
 
 ## Extension Settings
 
-As of now, this extension does not contribute any settings.
+This extension provides the following settings:
+
+- `sigil.persona`: The persona that Sigil will embody in its responses (default: "Default")
+- `sigil.personalizeResponses`: Enable personalized responses based on feedback
+- `sigil.personalizedPrompt`: Custom preferences for tailoring Sigil's responses
+- `sigil.fieldStudyOptIn`: Consent to anonymous use of interactions in research publications
 
 ## Known Issues
 
