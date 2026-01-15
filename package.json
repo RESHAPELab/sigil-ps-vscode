@@ -13,7 +13,8 @@
         "Chat"
     ],
     "activationEvents": [
-        "onChatParticipant:sigil-ps.Sigil"
+        "onChatParticipant:sigil-ps.Sigil",
+        "onCommand:sigil-ps.openChat"
     ],
     "main": "./out/extension.js",
     "contributes": {
@@ -34,6 +35,11 @@
             }
         ],
         "commands": [
+            {
+                "command": "sigil-ps.openChat",
+                "title": "Open Sigil Chat",
+                "icon": "$(comment-discussion)"
+            },
             {
                 "command": "sigil-ps.openPersonalization",
                 "title": "Open SIGIL-PS Personalization Settings"

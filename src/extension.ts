@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { post } from 'axios';
 import * as fs from 'fs';
+import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { authenticateWithGitHub } from './auth';
 import { syncSigilSettings, updateOptIn, updatePersonalization } from './personalization';
@@ -26,6 +27,11 @@ Follow its guidance to practice problem solving, rather than copying answers.
 Reach out to your instructor if you're unsure about what tools are allowed.
 
 By continuing, you acknowledge that you understand these guidelines and agree to use SIGIL-PS responsibly.`;
+
+// Webview panel variable
+let sigilWebviewPanel: vscode.WebviewPanel | undefined = undefined;
+let conversationHistory: Array<{ role: string; content: string; files?: string[] }> = [];
+let currentConversationId: string | undefined = undefined;
 
 export function activate(context: vscode.ExtensionContext) {
     // Display a welcome pop-up to guide users on getting started with Sigil
@@ -326,6 +332,268 @@ export function activate(context: vscode.ExtensionContext) {
     personalizationStatusBarItem.show();
 
     context.subscriptions.push(personalizationStatusBarItem);
+
+    // Register command to open Sigil chat webview
+    context.subscriptions.push(
+        vscode.commands.registerCommand('sigil-ps.openChat', () => {
+            getOrCreateWebviewPanel(context);
+        })
+    );
+}
+
+// Function to create/return webview panel
+function getOrCreateWebviewPanel(context: vscode.ExtensionContext): vscode.WebviewPanel {
+    if (sigilWebviewPanel) {
+        sigilWebviewPanel.reveal();
+        return sigilWebviewPanel;
+    }
+
+    const panel = vscode.window.createWebviewPanel(
+        'sigilChat',
+        'Sigil Chat',
+        vscode.ViewColumn.Beside,
+        {
+            enableScripts: true,
+            retainContextWhenHidden: true,
+            localResourceRoots: [vscode.Uri.joinPath(context.extensionUri, 'media')]
+        }
+    );
+
+    panel.webview.html = getWebviewContent(context, panel.webview);
+
+    // Handle messages from webview
+    panel.webview.onDidReceiveMessage(
+        async (message) => {
+            switch (message.command) {
+                case 'sendMessage':
+                    await handleWebviewMessage(context, message.text, message.attachedFiles || []);
+                    break;
+                case 'attachFile':
+                    await handleFileAttachment(panel);
+                    break;
+                case 'getCurrentFile':
+                    await sendCurrentFileContext(panel);
+                    break;
+                case 'provideFeedback':
+                    await handleWebviewFeedback(message.args);
+                    break;
+            }
+        },
+        undefined,
+        context.subscriptions
+    );
+
+    panel.onDidDispose(() => {
+        sigilWebviewPanel = undefined;
+    }, null, context.subscriptions);
+
+    sigilWebviewPanel = panel;
+    return panel;
+}
+
+// Function to get webview HTML content
+function getWebviewContent(context: vscode.ExtensionContext, webview: vscode.Webview): string {
+    const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(context.extensionUri, 'media', 'main.js'));
+    const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(context.extensionUri, 'media', 'main.css'));
+
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link href="${styleUri}" rel="stylesheet">
+    <title>Sigil Chat</title>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="chat-header">
+            <h2>Sigil - Your Programming Tutor</h2>
+        </div>
+        <div id="chat-messages" class="chat-messages"></div>
+        <div class="chat-input-container">
+            <div class="file-attachments" id="file-attachments"></div>
+            <div class="input-row">
+                <button id="attach-file-btn" class="attach-btn" title="Attach File">📎</button>
+                <button id="attach-current-file-btn" class="attach-btn" title="Include Current File">📄</button>
+                <textarea id="message-input" placeholder="Ask Sigil a question..."></textarea>
+                <button id="send-btn">Send</button>
+            </div>
+        </div>
+    </div>
+    <script src="${scriptUri}"></script>
+</body>
+</html>`;
+}
+
+// Handle messages from webview
+async function handleWebviewMessage(context: vscode.ExtensionContext, messageText: string, attachedFiles: string[]) {
+    if (!sigilWebviewPanel) {
+        return;
+    }
+
+    // Add user message to chat
+    sigilWebviewPanel.webview.postMessage({
+        command: 'addMessage',
+        role: 'user',
+        content: messageText,
+        files: attachedFiles
+    });
+
+    conversationHistory.push({ role: 'user', content: messageText, files: attachedFiles });
+
+    // Get current file context
+    let code = "";
+    const activeEditor = vscode.window.activeTextEditor;
+    if (activeEditor) {
+        const document = activeEditor.document;
+        const selection = activeEditor.selection;
+        const fileName = document.fileName.split(/[/\\]/).pop() || document.fileName;
+
+        if (!selection.isEmpty) {
+            const selectedText = document.getText(selection);
+            code += `Current file selection (${fileName}):\n${selectedText}\n\n`;
+        } else {
+            const fullText = document.getText();
+            code += `Current file (${fileName}):\n${fullText}\n\n`;
+        }
+    }
+
+    // Process attached files
+    for (const filePath of attachedFiles) {
+        try {
+            const fileContent = fs.readFileSync(filePath, 'utf8');
+            const fileName = path.basename(filePath);
+            code += `\nFile: ${fileName}\n${fileContent}\n\n`;
+        } catch (error) {
+            console.error(`Error reading file ${filePath}:`, error);
+        }
+    }
+
+    // Show loading indicator
+    sigilWebviewPanel.webview.postMessage({
+        command: 'addMessage',
+        role: 'assistant',
+        content: 'Thinking...',
+        loading: true
+    });
+
+    // Authenticate and send to API
+    const githubUser = await authenticateWithGitHub(context);
+    if (!githubUser) {
+        sigilWebviewPanel.webview.postMessage({
+            command: 'addMessage',
+            role: 'error',
+            content: 'Authentication required. Please sign in with GitHub.'
+        });
+        return;
+    }
+
+    try {
+        if (!currentConversationId) {
+            currentConversationId = uuidv4();
+        }
+
+        const config = vscode.workspace.getConfiguration();
+        const personalize = config.get<boolean>("sigil.personalizeResponses");
+        const personaConfig = config.inspect("sigil.persona");
+        const chosenPersona = config.get<string>("sigil.persona");
+        const persona = chosenPersona !== personaConfig?.defaultValue ? chosenPersona : undefined;
+
+        // Build history from conversationHistory
+        const history: string[] = [];
+        conversationHistory.slice(-MAX_HISTORY_LENGTH).forEach((item) => {
+            if (item.role === 'user') {
+                history.push("User: " + item.content);
+            } else if (item.role === 'assistant') {
+                history.push("Sigil: " + item.content);
+            }
+        });
+
+        const apiResponse = await post(`${getApiUrl()}/api/prompt`, {
+            userID: githubUser.id,
+            conversationID: currentConversationId,
+            code,
+            message: messageText,
+            history,
+            personalize,
+            persona,
+            logChat: true,
+            userMetaData: {
+                login: githubUser.login,
+                email: githubUser.email,
+                name: githubUser.name
+            }
+        });
+
+        const responseContent = apiResponse.data.response;
+
+        // Update message with response
+        sigilWebviewPanel.webview.postMessage({
+            command: 'updateLastMessage',
+            content: responseContent,
+            loading: false
+        });
+
+        // Add to conversation history
+        conversationHistory.push({ role: 'assistant', content: responseContent });
+
+        // Store feedback args for later use
+        if (sigilWebviewPanel) {
+            (sigilWebviewPanel as any).lastFeedbackArgs = {
+                userID: githubUser.id,
+                conversationID: currentConversationId,
+                code: code,
+                message: messageText,
+                response: responseContent
+            };
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        sigilWebviewPanel.webview.postMessage({
+            command: 'updateLastMessage',
+            content: "I'm sorry, I'm having trouble connecting to the server. Please try again later.",
+            loading: false
+        });
+    }
+}
+
+// Handle file attachment
+async function handleFileAttachment(panel: vscode.WebviewPanel) {
+    const files = await vscode.window.showOpenDialog({
+        canSelectFiles: true,
+        canSelectFolders: false,
+        canSelectMany: true,
+        openLabel: 'Attach to Sigil'
+    });
+
+    if (files && files.length > 0) {
+        const filePaths = files.map(f => f.fsPath);
+        panel.webview.postMessage({
+            command: 'addAttachedFiles',
+            files: filePaths
+        });
+    }
+}
+
+// Send current file context
+async function sendCurrentFileContext(panel: vscode.WebviewPanel) {
+    const activeEditor = vscode.window.activeTextEditor;
+    if (activeEditor) {
+        const document = activeEditor.document;
+        const fileName = document.fileName.split(/[/\\]/).pop() || document.fileName;
+        panel.webview.postMessage({
+            command: 'addAttachedFiles',
+            files: [document.fileName],
+            label: `Current file: ${fileName}`
+        });
+    } else {
+        vscode.window.showInformationMessage('No active file to attach.');
+    }
+}
+
+// Handle feedback from webview
+async function handleWebviewFeedback(args: any) {
+    await vscode.commands.executeCommand('sigil-ps.handleFeedback', args);
 }
 
 export function deactivate() { }
