@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 
-interface GitHubUser {
+export interface GitHubUser {
     login: string;
     id: number;
     name: string;
