@@ -66,6 +66,19 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         const mediaPath = vscode.Uri.joinPath(this._extensionUri, 'media');
         const mediaPathOnDisk = mediaPath.fsPath;
 
+        // Generate nonce for CSP
+        const nonce = this._getNonce();
+
+        // Build CSP that allows our resources
+        const csp = [
+            `default-src 'none'`,
+            `style-src ${webview.cspSource} 'unsafe-inline'`,
+            `script-src ${webview.cspSource} 'nonce-${nonce}'`,
+            `font-src ${webview.cspSource}`,
+            `img-src ${webview.cspSource} data: https:`,
+            `connect-src ${webview.cspSource} https:`
+        ].join('; ');
+
         // Try to load the built HTML file
         let htmlContent = '';
         const indexPath = path.join(mediaPathOnDisk, 'index.html');
@@ -78,12 +91,23 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
             htmlContent = htmlContent.replace(/\/assets\//g, `${assetPath}/assets/`);
             htmlContent = htmlContent.replace(/href="\//g, `href="${assetPath}/`);
             htmlContent = htmlContent.replace(/src="\//g, `src="${assetPath}/`);
+            
+            // Inject CSP meta tag after <head>
+            htmlContent = htmlContent.replace(
+                '<head>',
+                `<head>\n    <meta http-equiv="Content-Security-Policy" content="${csp}">`
+            );
+            
+            // Add nonce to script tags
+            htmlContent = htmlContent.replace(/<script /g, `<script nonce="${nonce}" `);
+            htmlContent = htmlContent.replace(/<script>/g, `<script nonce="${nonce}">`);
         } else {
             // Fallback HTML if build files don't exist yet
             htmlContent = `<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <meta http-equiv="Content-Security-Policy" content="${csp}">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Sigil Chat</title>
     <style>
@@ -105,7 +129,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         <pre>cd sigil-ps-core/ui && npm run build</pre>
         <p>Then copy the dist folder contents to sigil-ps-vscode/media/</p>
     </div>
-    <script>
+    <script nonce="${nonce}">
         const vscode = acquireVsCodeApi();
         vscode.postMessage({ command: 'ready' });
     </script>
@@ -114,5 +138,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         }
 
         return htmlContent;
+    }
+
+    private _getNonce(): string {
+        let text = '';
+        const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+        for (let i = 0; i < 32; i++) {
+            text += possible.charAt(Math.floor(Math.random() * possible.length));
+        }
+        return text;
     }
 }

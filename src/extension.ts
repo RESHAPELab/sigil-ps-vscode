@@ -121,6 +121,13 @@ export function activate(context: vscode.ExtensionContext) {
 
     context.subscriptions.push(toggleCommand);
 
+    // Track code changes on save
+    context.subscriptions.push(
+        vscode.workspace.onDidSaveTextDocument((document) => {
+            messageHandler.recordCodeChange(document);
+        })
+    );
+
     // Personalization management
 
     // Sync user settings with backend

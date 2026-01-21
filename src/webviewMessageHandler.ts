@@ -30,12 +30,14 @@ export class WebviewMessageHandler {
     private conversationHistory: ChatMessage[] = [];
     private currentConversationId: string | undefined;
     private githubUser: GitHubUser | null = null;
+    private disposables: vscode.Disposable[] = [];
 
     constructor(
         private context: vscode.ExtensionContext,
         private viewProvider: ChatViewProvider
     ) {
         this.setupMessageHandlers();
+        this.registerActiveEditorListener();
     }
 
     private setupMessageHandlers() {
@@ -91,7 +93,7 @@ export class WebviewMessageHandler {
         }
     }
 
-    private async handleSendMessage(data: { message: string; includeFileContext?: boolean }) {
+    private async handleSendMessage(data: { message: string; includeFileContext?: boolean; attachments?: { fileName: string; content: string; }[] }) {
         // Ensure authenticated
         if (!this.githubUser) {
             this.githubUser = await authenticateWithGitHub(this.context);
@@ -106,10 +108,14 @@ export class WebviewMessageHandler {
 
         // Get file context if requested (default: filename-only; content only if explicitly enabled)
         let code = '';
-        if (data.includeFileContext === true) {
-            code = await this.getCurrentFileContext();
-        } else {
-            code = await this.getCurrentFileNameContext();
+        // Always include current file content
+        code = await this.getCurrentFileContext();
+
+        if (data.attachments && data.attachments.length > 0) {
+            const attachmentBlocks = data.attachments.map(att => {
+                return `Attached file (${att.fileName}):\n${att.content}\n\n`;
+            }).join('');
+            code = `${code}${attachmentBlocks}`;
         }
 
         // Generate conversation ID if needed
@@ -191,7 +197,7 @@ export class WebviewMessageHandler {
                 message: assistantMessage
             });
 
-        // Send feedback data for this message
+            // Send feedback data for this message
             this.viewProvider.postMessage({
                 command: 'feedbackData',
                 messageId: assistantMessage.id,
@@ -219,13 +225,20 @@ export class WebviewMessageHandler {
         }
     }
 
-    private async handleGetFileContext() {
+    private registerActiveEditorListener() {
+        const editorListener = vscode.window.onDidChangeActiveTextEditor(() => {
+            this.sendFileContext();
+        });
+        this.disposables.push(editorListener);
+    }
+
+    private async sendFileContext() {
         const activeEditor = vscode.window.activeTextEditor;
-        
+
         if (activeEditor) {
             const fileName = activeEditor.document.fileName.split(/[/\\]/).pop() || activeEditor.document.fileName;
             const isSelection = !activeEditor.selection.isEmpty;
-            
+
             this.viewProvider.postMessage({
                 command: 'fileContext',
                 context: {
@@ -240,6 +253,10 @@ export class WebviewMessageHandler {
                 context: null
             });
         }
+    }
+
+    private async handleGetFileContext() {
+        await this.sendFileContext();
     }
 
     private async getCurrentFileNameContext(): Promise<string> {
@@ -260,7 +277,7 @@ export class WebviewMessageHandler {
     private async getCurrentFileContext(): Promise<string> {
         let code = '';
         const activeEditor = vscode.window.activeTextEditor;
-        
+
         if (activeEditor) {
             const document = activeEditor.document;
             const selection = activeEditor.selection;
@@ -319,7 +336,7 @@ export class WebviewMessageHandler {
                 userID: this.githubUser.id,
                 conversationID: this.currentConversationId
             });
-            
+
             const apiResponse = await post(`${getApiUrl()}/api/feedback`, {
                 rating: data.rating === 'good' ? GOOD : BAD,
                 reason: data.reason,
@@ -362,6 +379,39 @@ export class WebviewMessageHandler {
         }
     }
 
+    public async recordCodeChange(document: vscode.TextDocument) {
+        try {
+            if (document.isUntitled || document.uri.scheme !== 'file') {
+                return;
+            }
+
+            if (!this.githubUser) {
+                this.githubUser = await authenticateWithGitHub(this.context);
+                if (!this.githubUser) {
+                    console.warn('Skipping codeChange: user not authenticated');
+                    return;
+                }
+            }
+
+            const content = document.getText() || '';
+            const byteSize = Buffer.byteLength(content, 'utf8');
+            if (byteSize > 1024 * 1024) {
+                console.warn(`Skipping codeChange: ${document.fileName} exceeds 1MB`);
+                return;
+            }
+
+            const filename = vscode.workspace.asRelativePath(document.uri, false) || document.fileName;
+
+            await post(`${getApiUrl()}/api/users/codeChange`, {
+                userID: this.githubUser.id,
+                filename,
+                content
+            });
+        } catch (error) {
+            console.error('Error recording code change:', error);
+        }
+    }
+
     private handleClearHistory() {
         this.conversationHistory = [];
         this.currentConversationId = undefined;
@@ -373,7 +423,9 @@ export class WebviewMessageHandler {
     public async initialize() {
         // Request authentication status
         await this.handleRequestAuth();
-        
+        // Send initial file context
+        await this.sendFileContext();
+
         // Send initial state
         this.viewProvider.postMessage({
             command: 'initialized',
