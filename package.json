@@ -113,11 +113,12 @@
     },
     "scripts": {
         "vscode:prepublish": "npm run compile",
-        "compile": "node -r dotenv/config && tsc -p ./",
+        "compile": "tsc -p ./",
         "watch": "tsc -watch -p ./",
         "pretest": "npm run compile && npm run lint",
         "lint": "eslint",
-        "test": "node ./out/test/runTest.js"
+        "test": "node ./out/test/runTest.js",
+        "package": "vsce package"
     },
     "devDependencies": {
         "@eslint/js": "^9.13.0",
@@ -126,6 +127,7 @@
         "@types/node": "18.x",
         "@types/vscode": "^1.93.0",
         "@vscode/test-electron": "^2.3.6",
+        "@vscode/vsce": "^3.7.1",
         "dotenv": "^16.4.7",
         "eslint": "^9.13.0",
         "glob": "^10.3.10",
