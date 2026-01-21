@@ -312,6 +312,14 @@ export class WebviewMessageHandler {
 
         try {
             const code = await this.getCurrentFileContext();
+            console.log('Submitting feedback to API:', {
+                messageId: data.messageId,
+                rating: data.rating,
+                reason: data.reason,
+                userID: this.githubUser.id,
+                conversationID: this.currentConversationId
+            });
+            
             const apiResponse = await post(`${getApiUrl()}/api/feedback`, {
                 rating: data.rating === 'good' ? GOOD : BAD,
                 reason: data.reason,
@@ -323,16 +331,24 @@ export class WebviewMessageHandler {
                 code
             });
 
-            this.viewProvider.postMessage({
-                command: 'feedbackSubmitted',
-                messageId: data.messageId,
-                success: true
-            });
+            console.log('Feedback API response:', apiResponse);
 
-            if (personalize) {
-                // Sync settings if personalization is enabled
-                const { syncSigilSettings } = await import('./personalization.js');
-                await syncSigilSettings(this.context);
+            // Verify response status
+            if (apiResponse.status === 200 || apiResponse.status === 201) {
+                console.log('Feedback successfully saved to database');
+                this.viewProvider.postMessage({
+                    command: 'feedbackSubmitted',
+                    messageId: data.messageId,
+                    success: true
+                });
+
+                if (personalize) {
+                    // Sync settings if personalization is enabled
+                    const { syncSigilSettings } = await import('./personalization.js');
+                    await syncSigilSettings(this.context);
+                }
+            } else {
+                throw new Error(`API returned status ${apiResponse.status}`);
             }
 
         } catch (error) {
