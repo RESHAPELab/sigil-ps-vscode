@@ -13,20 +13,29 @@
         "Chat"
     ],
     "activationEvents": [
-        "onChatParticipant:sigil-ps.Sigil"
+        "onView:sigil-ps.chatView"
     ],
     "main": "./out/extension.js",
     "contributes": {
-        "chatParticipants": [
-            {
-                "id": "sigil-ps.Sigil",
-                "fullName": "Sigil",
-                "name": "sigil-ps",
-                "description": "Ask me anything! I'm here to guide you.",
-                "isSticky": true,
-                "commands": []
-            }
-        ],
+        "viewsContainers": {
+            "activitybar": [
+                {
+                    "id": "sigil-ps-sidebar",
+                    "title": "Sigil",
+                    "icon": "images/wand.svg"
+                }
+            ]
+        },
+        "views": {
+            "sigil-ps-sidebar": [
+                {
+                    "id": "sigil-ps.chatView",
+                    "name": "Chat",
+                    "type": "webview",
+                    "when": "true"
+                }
+            ]
+        },
         "authentication": [
             {
                 "id": "github",
@@ -35,8 +44,21 @@
         ],
         "commands": [
             {
+                "command": "sigil-ps.toggleChat",
+                "title": "Toggle Sigil Chat",
+                "icon": "$(comment-discussion)",
+                "category": "Sigil"
+            },
+            {
                 "command": "sigil-ps.openPersonalization",
                 "title": "Open SIGIL-PS Personalization Settings"
+            }
+        ],
+        "keybindings": [
+            {
+                "command": "sigil-ps.toggleChat",
+                "key": "ctrl+shift+s",
+                "mac": "cmd+shift+s"
             }
         ],
         "configuration": {
@@ -82,6 +104,11 @@
                     "description": "Development setting: custom base URL for the SIGIL-PS API for testing purposes (i.e. localhost). Only applies when in test environment."
                 }
             }
+        },
+        "files": {
+            "include": [
+                "media/**/*"
+            ]
         }
     },
     "scripts": {

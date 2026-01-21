@@ -1,10 +1,12 @@
 import * as vscode from 'vscode';
-import {post} from 'axios';
+import { post } from 'axios';
 import * as fs from 'fs';
-import {v4 as uuidv4} from 'uuid';
-import {authenticateWithGitHub} from './auth';
-import {syncSigilSettings, updateOptIn, updatePersonalization} from './personalization';
+import { v4 as uuidv4 } from 'uuid';
+import { authenticateWithGitHub } from './auth';
+import { syncSigilSettings, updateOptIn, updatePersonalization } from './personalization';
 import getApiUrl from "./apiConfig";
+import { ChatViewProvider } from './chatViewProvider';
+import { WebviewMessageHandler } from './webviewMessageHandler';
 
 const MAX_HISTORY_LENGTH = 6;
 const GOOD = 1;
@@ -30,11 +32,11 @@ By continuing, you acknowledge that you understand these guidelines and agree to
 export function activate(context: vscode.ExtensionContext) {
     // Display a welcome pop-up to guide users on getting started with Sigil
     if (!context.globalState.get('sigilPSHasShownWelcome')) {
-        vscode.window.showInformationMessage(academicIntegrityWelcomeMessage, {modal: true});
+        vscode.window.showInformationMessage(academicIntegrityWelcomeMessage, { modal: true });
         context.globalState.update('sigilPSHasShownWelcome', true);
     }
 
-	// Logic for collecting and sending feedback to the server
+    // Logic for collecting and sending feedback to the server
     vscode.commands.registerCommand('sigil-ps.handleFeedback', async (args) => {
         try {
             console.log('Arguments:', args);
@@ -69,20 +71,20 @@ export function activate(context: vscode.ExtensionContext) {
             let config = vscode.workspace.getConfiguration();
             let personalize = config.get<boolean>("sigil.personalizeResponses");
 
-            const apiResponse = await post(`${getApiUrl()}/api/feedback`, {rating: ratingEnum, reason: customReason, personalize, ...args});
+            const apiResponse = await post(`${getApiUrl()}/api/feedback`, { rating: ratingEnum, reason: customReason, personalize, ...args });
             console.log('API Response:', apiResponse.data);
-            
+
             if (personalize) {
                 await syncSigilSettings(context);
-                
+
                 vscode.window.showInformationMessage(
                     'Thank you for your feedback! Personalization has been updated.',
                     'Open Personalization Settings'
-                    ).then(selection => {
-                        if (selection === 'Open Personalization Settings') {
-                            vscode.commands.executeCommand('sigil-ps.openPersonalization');
-                        }
+                ).then(selection => {
+                    if (selection === 'Open Personalization Settings') {
+                        vscode.commands.executeCommand('sigil-ps.openPersonalization');
                     }
+                }
                 );
             } else {
                 vscode.window.showInformationMessage("Thank you for your feedback!");
@@ -94,141 +96,37 @@ export function activate(context: vscode.ExtensionContext) {
         }
     });
 
-    // Handles responses to chat prompts
-	const chatHandler: vscode.ChatRequestHandler = async (request: vscode.ChatRequest, chatContext: vscode.ChatContext, stream: vscode.ChatResponseStream, token: vscode.CancellationToken) => {
-        console.log("User message:", request.prompt);
-        console.log("Token:", token);
-        console.log("References:", request.references);
-        console.log("Context:", chatContext);
+    // Create and register the chat view provider
+    const chatViewProvider = new ChatViewProvider(context.extensionUri);
+    context.subscriptions.push(
+        vscode.window.registerWebviewViewProvider(ChatViewProvider.viewType, chatViewProvider)
+    );
 
-        let code = "";
-
-        console.log("\nRelevant references: ");
-        
-        request.references.forEach((ref) => {
-            if (ref.value instanceof vscode.Location) {
-                console.log(ref, "is a Location");
-                console.log(ref.id, "-", ref.value);
-
-                const uri = ref.value.uri;
-                const range = ref.value.range;
-
-                const document = vscode.workspace.textDocuments.find((doc) => doc.uri.fsPath === uri.fsPath);
-
-                if (document) {
-                    const fileName = uri.path.split("/").pop();
-                    code += (ref.modelDescription || "File provided for context") + " (" + fileName + ")" + ":\n" + document?.getText(range);
-                }
-            } else if (ref.value instanceof vscode.Uri) {
-                console.log(ref, "is a URI");
-                console.log(ref.id, "-", ref.value);
-
-                const uri = ref.value;
-
-                const fileContent = fs.readFileSync(uri.fsPath, 'utf8');
-
-                console.log("File content:", fileContent);
-
-                const fileName = uri.path.split("/").pop();
-                code += "\n" + (ref.modelDescription || "File provided for context") + " (" + fileName + ")" + ":\n" + fileContent + "\n";
-            }
-        });
-        console.log("Final code:");
-        console.log(code);
-
-        let history: string[] = [];
-        let conversationId: string | undefined = undefined;
-
-        chatContext.history.slice(-MAX_HISTORY_LENGTH).forEach((item) => {
-            if (item instanceof vscode.ChatRequestTurn) {
-                history.push("User: " + item.prompt);
-            } else if (item instanceof vscode.ChatResponseTurn) {
-                let fullMessage = '';
-                item.response.forEach(r => {
-                    const mdPart = r as vscode.ChatResponseMarkdownPart;
-                    
-                    let content = mdPart.value.value;
-
-                    if (content) {
-                        const match = content.match(/\[\]\( conversation_id:(\S+) \)/);
-
-                        if (match && !conversationId) {
-                            conversationId = match[1] ?? undefined;
-                            content = content.replace(/\[\]\( conversation_id:(\S+) \)/, '');
-                        }
-                        
-                        fullMessage += content;
-                    }
-                });
-
-                history.push("Sigil: " + fullMessage);
-            }
-        });
-
-        console.log("Chat history:", history);
-
-        let githubUser = await authenticateWithGitHub(context);
-
-        if (!githubUser) {
-            vscode.window.showErrorMessage("Sigil: Authentication required to chat");
-            return;
+    // Set up webview message handler
+    const messageHandler = new WebviewMessageHandler(context, chatViewProvider);
+    
+    // Set up message handler - it will be connected when the view is resolved
+    chatViewProvider.setMessageHandler((message) => {
+        messageHandler.handleMessage(message);
+        // Initialize when webview sends ready message
+        if (message.command === 'ready') {
+            messageHandler.initialize();
         }
+    });
 
-        let config = vscode.workspace.getConfiguration();
-        let personalize = config.get<boolean>("sigil.personalizeResponses");
-        
-        let personaConfig = config.inspect("sigil.persona");
-        let defaultPersona = personaConfig?.defaultValue;
-        let chosenPersona = config.get<string>("sigil.persona");
+    // Register command to focus/reveal the chat view
+    const toggleCommand = vscode.commands.registerCommand('sigil-ps.toggleChat', () => {
+        vscode.commands.executeCommand('workbench.view.extension.sigil-ps-sidebar');
+    });
 
-        console.log("Persona config:", personaConfig);
+    context.subscriptions.push(toggleCommand);
 
-        let persona = undefined;
-
-        if (chosenPersona !== defaultPersona) {
-            persona = chosenPersona;
-        }
-
-        try {
-            // if we didn't find conversation ID in the history, create a new one in this message
-            if (!conversationId) {
-                conversationId = uuidv4();
-                // this is so silly but we put the conversation id as a blank link that won't show up in MD
-                stream.markdown(`[]( conversation_id:${conversationId} )`);
-            }
-
-            // get Sigil response
-            const apiResponse = await post(`${getApiUrl()}/api/prompt`, 
-                {userID: githubUser?.id, conversationID: conversationId, 
-                    code, message: request.prompt, history, personalize, persona, logChat: true,
-                    userMetaData: {
-                        login: githubUser.login,
-                        email: githubUser.email,
-                        name: githubUser.name
-                }});
-            stream.markdown(apiResponse.data.response);
-            
-            // set up feedback button
-            var args = {userID: githubUser?.id, conversationID: conversationId, 
-                code: code, message: request.prompt, response: apiResponse.data.response};          
-            stream.button({
-                command: 'sigil-ps.handleFeedback',
-                title: vscode.l10n.t(FEEDBACK_BUTTON_TEXT),
-                arguments: [args]
-            });
-        } catch (err) {
-            console.log(err);
-            stream.markdown("I'm sorry, I'm having trouble connecting to the server. Please try again later.");
-        }
-
-		return;
-	};
-
-	// create participant
-	const tutor = vscode.chat.createChatParticipant("sigil-ps.Sigil", chatHandler);
-
-	// add icon to participant
-	tutor.iconPath = vscode.Uri.joinPath(context.extensionUri, 'images/avatar.jpeg');
+    // Track code changes on save
+    context.subscriptions.push(
+        vscode.workspace.onDidSaveTextDocument((document) => {
+            messageHandler.recordCodeChange(document);
+        })
+    );
 
     // Personalization management
 
@@ -253,8 +151,8 @@ export function activate(context: vscode.ExtensionContext) {
                 updateOptIn(context, newOptIn);
             }
         }
-    }); 
-    
+    });
+
     // Allow user to manage personalization
     context.subscriptions.push(
         vscode.commands.registerCommand('sigil-ps.openPersonalization', async () => {
@@ -269,7 +167,7 @@ export function activate(context: vscode.ExtensionContext) {
             );
         })
     );
-      
+
     const personalizationStatusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
     personalizationStatusBarItem.text = '$(gear) Sigil Personalization';
     personalizationStatusBarItem.tooltip = 'View or modify your personalization settings for Sigil';
