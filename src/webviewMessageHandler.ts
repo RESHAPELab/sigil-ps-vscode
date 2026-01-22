@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { post } from 'axios';
 import * as fs from 'fs';
+import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { authenticateWithGitHub, GitHubUser } from './auth';
 import getApiUrl from './apiConfig';
@@ -18,6 +19,7 @@ export interface ChatMessage {
     content: string;
     timestamp: number;
     conversationId?: string;
+    attachments?: { fileName: string; content: string; }[];
 }
 
 export interface FileContext {
@@ -61,6 +63,12 @@ export class WebviewMessageHandler {
                     break;
                 case 'clearHistory':
                     this.handleClearHistory();
+                    break;
+                case 'pickFiles':
+                    await this.handlePickFiles();
+                    break;
+                case 'openContextPicker':
+                    await this.handleContextPicker(message.query || '');
                     break;
                 default:
                     console.warn('Unknown message command:', message.command);
@@ -129,7 +137,8 @@ export class WebviewMessageHandler {
             role: 'user',
             content: data.message,
             timestamp: Date.now(),
-            conversationId: this.currentConversationId
+            conversationId: this.currentConversationId,
+            attachments: data.attachments && data.attachments.length > 0 ? data.attachments : undefined
         };
         this.conversationHistory.push(userMessage);
 
@@ -257,6 +266,393 @@ export class WebviewMessageHandler {
 
     private async handleGetFileContext() {
         await this.sendFileContext();
+    }
+
+    private async handlePickFiles() {
+        try {
+            console.log('handlePickFiles called');
+            
+            // Get workspace folder
+            const workspaceFolders = vscode.workspace.workspaceFolders;
+            if (!workspaceFolders || workspaceFolders.length === 0) {
+                const errorMsg = 'No workspace folder open. Please open a workspace first.';
+                console.warn(errorMsg);
+                this.viewProvider.postMessage({
+                    command: 'error',
+                    error: errorMsg
+                });
+                return;
+            }
+
+            const workspaceFolder = workspaceFolders[0];
+            
+            // Use workspace.findFiles() to get all files in workspace
+            console.log('Searching workspace for files...');
+            const allFiles = await vscode.workspace.findFiles('**/*', '**/node_modules/**', 1000);
+            
+            console.log(`Found ${allFiles.length} files in workspace`);
+            
+            if (allFiles.length === 0) {
+                this.viewProvider.postMessage({
+                    command: 'error',
+                    error: 'No files found in workspace.'
+                });
+                return;
+            }
+
+            // Group files by folder structure and create quick pick items
+            const fileItems: vscode.QuickPickItem[] = [];
+            const fileMap = new Map<string, vscode.Uri>();
+            
+            for (const fileUri of allFiles) {
+                const relativePath = vscode.workspace.asRelativePath(fileUri, false);
+                const fileName = relativePath.split(/[/\\]/).pop() || fileUri.fsPath;
+                const folderPath = relativePath.substring(0, relativePath.length - fileName.length);
+                
+                // VS Code's QuickPick doesn't support file icon theme icons directly
+                // Setting iconPath to file URI causes SVG files to render as images
+                // Use codicons in the label instead - they're the closest we can get
+                const ext = fileName.split('.').pop()?.toLowerCase() || '';
+                const fileIcon = this.getFileTypeCodicon(ext);
+                
+                // Add ALL files to the picker - no filtering by extension
+                fileItems.push({
+                    label: `${fileIcon} ${fileName}`,
+                    description: folderPath || workspaceFolder.name,
+                    detail: relativePath
+                    // Don't set iconPath - it causes issues with SVG files
+                });
+                fileMap.set(relativePath, fileUri);
+            }
+            
+            console.log(`Created ${fileItems.length} quick pick items`);
+
+            // Show quick pick with searchable file and symbol list
+            const selectedItems = await vscode.window.showQuickPick(fileItems, {
+                canPickMany: true,
+                placeHolder: `Select files or symbols from workspace (${allFiles.length} files, showing symbols)`,
+                matchOnDescription: true,
+                matchOnDetail: true
+            });
+
+            if (!selectedItems || selectedItems.length === 0) {
+                // User cancelled
+                return;
+            }
+
+            // Read all selected files using VS Code APIs
+            const files: { fileName: string; content: string }[] = [];
+            const MAX_FILE_SIZE = 1024 * 1024; // 1MB
+
+            for (const item of selectedItems) {
+                if (!item.detail) continue;
+                
+                const fileUri = fileMap.get(item.detail);
+                if (!fileUri) continue;
+
+                try {
+                    // Check file size using VS Code API
+                    const stats = await vscode.workspace.fs.stat(fileUri);
+                    if (stats.size > MAX_FILE_SIZE) {
+                        this.viewProvider.postMessage({
+                            command: 'error',
+                            error: `File ${item.detail} exceeds 1MB size limit.`
+                        });
+                        continue;
+                    }
+
+                    // Read file content using VS Code API
+                    const fileData = await vscode.workspace.fs.readFile(fileUri);
+                    const content = Buffer.from(fileData).toString('utf8');
+                    const fileName = item.detail;
+
+                    files.push({
+                        fileName,
+                        content
+                    });
+                } catch (error) {
+                    console.error(`Error reading file ${fileUri.fsPath}:`, error);
+                    this.viewProvider.postMessage({
+                        command: 'error',
+                        error: `Failed to read file ${item.detail}: ${error instanceof Error ? error.message : String(error)}`
+                    });
+                }
+            }
+
+            if (files.length > 0) {
+                // Send files back to webview
+                this.viewProvider.postMessage({
+                    command: 'filesPicked',
+                    files
+                });
+            }
+        } catch (error) {
+            console.error('Error in handlePickFiles:', error);
+            this.viewProvider.postMessage({
+                command: 'error',
+                error: error instanceof Error ? error.message : String(error)
+            });
+        }
+    }
+
+    private async handleContextPicker(query: string = '') {
+        try {
+            console.log('handleContextPicker called with query:', query);
+            
+            // Get workspace folder
+            const workspaceFolders = vscode.workspace.workspaceFolders;
+            if (!workspaceFolders || workspaceFolders.length === 0) {
+                this.viewProvider.postMessage({
+                    command: 'contextPickerResult',
+                    result: null,
+                    error: 'No workspace folder open.'
+                });
+                return;
+            }
+
+            const workspaceFolder = workspaceFolders[0];
+            const items: vscode.QuickPickItem[] = [];
+
+            // Get workspace files
+            const allFiles = await vscode.workspace.findFiles('**/*', '**/node_modules/**', 500);
+            
+            // Add files to picker
+            for (const fileUri of allFiles) {
+                const relativePath = vscode.workspace.asRelativePath(fileUri, false);
+                const fileName = relativePath.split(/[/\\]/).pop() || fileUri.fsPath;
+                const folderPath = relativePath.substring(0, relativePath.length - fileName.length);
+                
+                // Filter by query if provided
+                if (query && !relativePath.toLowerCase().includes(query.toLowerCase()) && 
+                    !fileName.toLowerCase().includes(query.toLowerCase())) {
+                    continue;
+                }
+                
+                // Use codicons in label - QuickPick doesn't support file icon theme directly
+                const ext = fileName.split('.').pop()?.toLowerCase() || '';
+                const fileIcon = this.getFileTypeCodicon(ext);
+                
+                items.push({
+                    label: `${fileIcon} ${fileName}`,
+                    description: folderPath || workspaceFolder.name,
+                    detail: relativePath
+                });
+            }
+
+            // Get workspace symbols if query provided
+            if (query) {
+                try {
+                    const symbols = await vscode.commands.executeCommand<vscode.SymbolInformation[]>(
+                        'vscode.executeWorkspaceSymbolProvider',
+                        query
+                    );
+                    
+                    if (symbols && symbols.length > 0) {
+                        // Add symbols to picker
+                        for (const symbol of symbols.slice(0, 50)) { // Limit to 50 symbols
+                            const filePath = symbol.location.uri.fsPath;
+                            const relativePath = vscode.workspace.asRelativePath(symbol.location.uri, false);
+                            const symbolIcon = this.getSymbolIcon(symbol.kind);
+                            
+                            items.push({
+                                label: `${symbolIcon} ${symbol.name}`,
+                                description: `${symbol.kind.toString()} in ${relativePath}`,
+                                detail: `${relativePath}:${symbol.location.range.start.line + 1}`
+                            });
+                        }
+                    }
+                } catch (error) {
+                    console.warn('Error fetching workspace symbols:', error);
+                }
+            }
+
+            if (items.length === 0) {
+                this.viewProvider.postMessage({
+                    command: 'contextPickerResult',
+                    result: null,
+                    error: query ? `No files or symbols found matching "${query}"` : 'No files found in workspace.'
+                });
+                return;
+            }
+
+            // Show quick pick
+            const selectedItem = await vscode.window.showQuickPick(items, {
+                canPickMany: false,
+                placeHolder: query ? `Select context matching "${query}"` : 'Select file or symbol from workspace',
+                matchOnDescription: true,
+                matchOnDetail: true
+            });
+
+            if (!selectedItem) {
+                // User cancelled
+                this.viewProvider.postMessage({
+                    command: 'contextPickerResult',
+                    result: null
+                });
+                return;
+            }
+
+            // Determine if it's a file or symbol (symbols have line numbers in detail)
+            if (!selectedItem.detail) {
+                return;
+            }
+            
+            const isSymbol = /:\d+$/.test(selectedItem.detail);
+            
+            if (isSymbol) {
+                // It's a symbol - extract file path and line
+                const [filePath, lineStr] = selectedItem.detail.split(':');
+                const line = parseInt(lineStr, 10) - 1;
+                
+                // Find the file URI
+                const fileUri = allFiles.find(f => 
+                    vscode.workspace.asRelativePath(f, false) === filePath
+                );
+                
+                if (fileUri) {
+                    // Read file and extract symbol context
+                    const document = await vscode.workspace.openTextDocument(fileUri);
+                    const symbolName = selectedItem.label.replace(/^\$\([^)]+\)\s+/, '');
+                    
+                    // Get context around the symbol (10 lines before and after)
+                    const contextRange = new vscode.Range(
+                        Math.max(0, line - 10),
+                        0,
+                        Math.min(document.lineCount - 1, line + 10),
+                        0
+                    );
+                    const context = document.getText(contextRange);
+                    
+                    this.viewProvider.postMessage({
+                        command: 'contextPickerResult',
+                        result: {
+                            type: 'symbol',
+                            name: symbolName,
+                            file: filePath,
+                            line: line + 1,
+                            context: context,
+                            reference: `#${symbolName}`
+                        }
+                    });
+                }
+            } else {
+                // It's a file
+                const relativePath = selectedItem.detail || '';
+                const fileUri = allFiles.find(f => 
+                    vscode.workspace.asRelativePath(f, false) === relativePath
+                );
+                
+                if (fileUri) {
+                    // Read file content
+                    const fileData = await vscode.workspace.fs.readFile(fileUri);
+                    const content = Buffer.from(fileData).toString('utf8');
+                    
+                    this.viewProvider.postMessage({
+                        command: 'contextPickerResult',
+                        result: {
+                            type: 'file',
+                            file: relativePath,
+                            content: content,
+                            reference: `#${relativePath}`
+                        }
+                    });
+                }
+            }
+        } catch (error) {
+            console.error('Error in handleContextPicker:', error);
+            this.viewProvider.postMessage({
+                command: 'contextPickerResult',
+                result: null,
+                error: error instanceof Error ? error.message : String(error)
+            });
+        }
+    }
+
+    private getSymbolIcon(kind: vscode.SymbolKind): string {
+        switch (kind) {
+            case vscode.SymbolKind.Function:
+            case vscode.SymbolKind.Method:
+                return '$(symbol-method)';
+            case vscode.SymbolKind.Class:
+                return '$(symbol-class)';
+            case vscode.SymbolKind.Interface:
+                return '$(symbol-interface)';
+            case vscode.SymbolKind.Variable:
+            case vscode.SymbolKind.Field:
+                return '$(symbol-variable)';
+            case vscode.SymbolKind.Constant:
+                return '$(symbol-constant)';
+            case vscode.SymbolKind.Enum:
+                return '$(symbol-enum)';
+            case vscode.SymbolKind.Property:
+                return '$(symbol-property)';
+            default:
+                return '$(symbol-misc)';
+        }
+    }
+
+
+    private getFileTypeCodicon(ext: string): string {
+        // Map file extensions to VS Code codicons
+        // These are the built-in icons VS Code provides
+        const iconMap: { [key: string]: string } = {
+            'ts': '$(file-code)',
+            'tsx': '$(file-code)',
+            'js': '$(file-code)',
+            'jsx': '$(file-code)',
+            'mjs': '$(file-code)',
+            'cjs': '$(file-code)',
+            'py': '$(file-code)',
+            'java': '$(file-code)',
+            'c': '$(file-code)',
+            'cpp': '$(file-code)',
+            'cc': '$(file-code)',
+            'cxx': '$(file-code)',
+            'h': '$(file-code)',
+            'hpp': '$(file-code)',
+            'hh': '$(file-code)',
+            'cs': '$(file-code)',
+            'go': '$(file-code)',
+            'rs': '$(file-code)',
+            'php': '$(file-code)',
+            'rb': '$(file-code)',
+            'swift': '$(file-code)',
+            'kt': '$(file-code)',
+            'scala': '$(file-code)',
+            'clj': '$(file-code)',
+            'hs': '$(file-code)',
+            'elm': '$(file-code)',
+            'ex': '$(file-code)',
+            'exs': '$(file-code)',
+            'html': '$(browser)',
+            'htm': '$(browser)',
+            'css': '$(file-code)',
+            'scss': '$(file-code)',
+            'sass': '$(file-code)',
+            'less': '$(file-code)',
+            'json': '$(json)',
+            'xml': '$(file-code)',
+            'yaml': '$(file-code)',
+            'yml': '$(file-code)',
+            'toml': '$(file-code)',
+            'md': '$(markdown)',
+            'txt': '$(file-text)',
+            'pdf': '$(file-pdf)',
+            'png': '$(file-media)',
+            'jpg': '$(file-media)',
+            'jpeg': '$(file-media)',
+            'gif': '$(file-media)',
+            'svg': '$(file-media)',
+            'webp': '$(file-media)',
+            'ico': '$(file-media)',
+            'zip': '$(file-zip)',
+            'tar': '$(file-zip)',
+            'gz': '$(file-zip)',
+            'rar': '$(file-zip)',
+            '7z': '$(file-zip)',
+        };
+        
+        return iconMap[ext] || '$(file)';
     }
 
     private async getCurrentFileNameContext(): Promise<string> {
