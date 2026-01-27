@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 import { post } from 'axios';
 import * as fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
-import { authenticateWithGitHub } from './auth';
 import { syncSigilSettings, updateOptIn, updatePersonalization } from './personalization';
 import getApiUrl from "./apiConfig";
 import { ChatViewProvider } from './chatViewProvider';
@@ -112,6 +111,11 @@ export function activate(context: vscode.ExtensionContext) {
         if (message.command === 'ready') {
             messageHandler.initialize();
         }
+    });
+
+    // Register callback to save state when webview is disposed or hidden
+    chatViewProvider.setOnDisposeCallback(async () => {
+        await messageHandler.saveConversationState();
     });
 
     // Register command to focus/reveal the chat view

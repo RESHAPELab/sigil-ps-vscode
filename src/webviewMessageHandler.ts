@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 import { post } from 'axios';
 import * as fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
-import { authenticateWithGitHub, GitHubUser } from './auth';
 import getApiUrl from './apiConfig';
 import { ChatViewProvider } from './chatViewProvider';
 
@@ -29,8 +28,10 @@ export interface FileContext {
 export class WebviewMessageHandler {
     private conversationHistory: ChatMessage[] = [];
     private currentConversationId: string | undefined;
-    private githubUser: GitHubUser | null = null;
     private disposables: vscode.Disposable[] = [];
+    private readonly CONVERSATION_HISTORY_KEY = 'sigil-ps_conversationHistory';
+    private readonly CONVERSATION_ID_KEY = 'sigil-ps_conversationId';
+    private readonly ANONYMOUS_USER_ID_KEY = 'sigil-ps_anonymousUserId';
 
     constructor(
         private context: vscode.ExtensionContext,
@@ -38,6 +39,10 @@ export class WebviewMessageHandler {
     ) {
         this.setupMessageHandlers();
         this.registerActiveEditorListener();
+        // Load conversation state eagerly when handler is created
+        this.loadConversationState().catch(err => {
+            console.error('Error loading conversation state:', err);
+        });
     }
 
     private setupMessageHandlers() {
@@ -56,11 +61,11 @@ export class WebviewMessageHandler {
                 case 'submitFeedback':
                     await this.handleSubmitFeedback(message.data);
                     break;
-                case 'requestAuth':
-                    await this.handleRequestAuth();
-                    break;
                 case 'clearHistory':
-                    this.handleClearHistory();
+                    await this.handleClearHistory();
+                    break;
+                case 'saveState':
+                    await this.saveConversationStatePrivate();
                     break;
                 default:
                     console.warn('Unknown message command:', message.command);
@@ -74,38 +79,7 @@ export class WebviewMessageHandler {
         }
     }
 
-    private async handleRequestAuth() {
-        this.githubUser = await authenticateWithGitHub(this.context);
-        if (this.githubUser) {
-            this.viewProvider.postMessage({
-                command: 'authStatus',
-                authenticated: true,
-                user: {
-                    login: this.githubUser.login,
-                    name: this.githubUser.name
-                }
-            });
-        } else {
-            this.viewProvider.postMessage({
-                command: 'authStatus',
-                authenticated: false
-            });
-        }
-    }
-
     private async handleSendMessage(data: { message: string; includeFileContext?: boolean; attachments?: { fileName: string; content: string; }[] }) {
-        // Ensure authenticated
-        if (!this.githubUser) {
-            this.githubUser = await authenticateWithGitHub(this.context);
-            if (!this.githubUser) {
-                this.viewProvider.postMessage({
-                    command: 'error',
-                    error: 'Authentication required. Please sign in with GitHub.'
-                });
-                return;
-            }
-        }
-
         // Get file context if requested (default: filename-only; content only if explicitly enabled)
         let code = '';
         // Always include current file content
@@ -132,6 +106,9 @@ export class WebviewMessageHandler {
             conversationId: this.currentConversationId
         };
         this.conversationHistory.push(userMessage);
+
+        // Persist updated conversation state after adding the user message
+        await this.saveConversationStatePrivate();
 
         // Send user message to webview
         this.viewProvider.postMessage({
@@ -164,21 +141,19 @@ export class WebviewMessageHandler {
         });
 
         try {
+            // Get anonymous user ID
+            const userId = await this.getAnonymousUserId();
+            
             // Call API
             const apiResponse = await post(`${getApiUrl()}/api/prompt`, {
-                userID: this.githubUser.id,
+                userID: userId,
                 conversationID: this.currentConversationId,
                 code,
                 message: data.message,
                 history,
                 logChat: true,
                 personalize,
-                persona,
-                userMetaData: {
-                    login: this.githubUser.login,
-                    email: this.githubUser.email,
-                    name: this.githubUser.name
-                }
+                persona
             });
 
             // Add assistant message to history
@@ -191,6 +166,9 @@ export class WebviewMessageHandler {
             };
             this.conversationHistory.push(assistantMessage);
 
+            // Persist updated conversation state after adding the assistant message
+            await this.saveConversationStatePrivate();
+
             // Send assistant message to webview
             this.viewProvider.postMessage({
                 command: 'messageAdded',
@@ -202,7 +180,7 @@ export class WebviewMessageHandler {
                 command: 'feedbackData',
                 messageId: assistantMessage.id,
                 data: {
-                    userID: this.githubUser.id,
+                    userID: userId,
                     conversationID: this.currentConversationId,
                     code,
                     message: data.message,
@@ -300,14 +278,6 @@ export class WebviewMessageHandler {
         rating: 'good' | 'bad';
         reason: string;
     }) {
-        if (!this.githubUser) {
-            this.viewProvider.postMessage({
-                command: 'error',
-                error: 'Authentication required for feedback'
-            });
-            return;
-        }
-
         // Find the message in history
         const message = this.conversationHistory.find(m => m.id === data.messageId);
         if (!message || message.role !== 'assistant') {
@@ -328,12 +298,13 @@ export class WebviewMessageHandler {
         const personalize = config.get<boolean>("sigil.personalizeResponses");
 
         try {
+            const userId = await this.getAnonymousUserId();
             const code = await this.getCurrentFileContext();
             console.log('Submitting feedback to API:', {
                 messageId: data.messageId,
                 rating: data.rating,
                 reason: data.reason,
-                userID: this.githubUser.id,
+                userID: userId,
                 conversationID: this.currentConversationId
             });
 
@@ -341,7 +312,7 @@ export class WebviewMessageHandler {
                 rating: data.rating === 'good' ? GOOD : BAD,
                 reason: data.reason,
                 personalize,
-                userID: this.githubUser.id,
+                userID: userId,
                 conversationID: this.currentConversationId || uuidv4(),
                 message: userMessage?.content || '',
                 response: message.content,
@@ -385,14 +356,7 @@ export class WebviewMessageHandler {
                 return;
             }
 
-            if (!this.githubUser) {
-                this.githubUser = await authenticateWithGitHub(this.context);
-                if (!this.githubUser) {
-                    console.warn('Skipping codeChange: user not authenticated');
-                    return;
-                }
-            }
-
+            const userId = await this.getAnonymousUserId();
             const content = document.getText() || '';
             const byteSize = Buffer.byteLength(content, 'utf8');
             if (byteSize > 1024 * 1024) {
@@ -403,7 +367,7 @@ export class WebviewMessageHandler {
             const filename = vscode.workspace.asRelativePath(document.uri, false) || document.fileName;
 
             await post(`${getApiUrl()}/api/users/codeChange`, {
-                userID: this.githubUser.id,
+                userID: userId,
                 filename,
                 content
             });
@@ -412,19 +376,26 @@ export class WebviewMessageHandler {
         }
     }
 
-    private handleClearHistory() {
+    private async handleClearHistory() {
         this.conversationHistory = [];
         this.currentConversationId = undefined;
         this.viewProvider.postMessage({
             command: 'historyCleared'
         });
+        await this.saveConversationStatePrivate();
     }
 
     public async initialize() {
-        // Request authentication status
-        await this.handleRequestAuth();
+        // Load any previously persisted conversation state
+        await this.loadConversationState();
         // Send initial file context
         await this.sendFileContext();
+
+        // Send authenticated status (no auth required)
+        this.viewProvider.postMessage({
+            command: 'authStatus',
+            authenticated: true
+        });
 
         // Send initial state
         this.viewProvider.postMessage({
@@ -434,5 +405,38 @@ export class WebviewMessageHandler {
                 conversationId: this.currentConversationId
             }
         });
+    }
+
+    public async saveConversationState() {
+        await this.context.globalState.update(this.CONVERSATION_HISTORY_KEY, this.conversationHistory);
+        await this.context.globalState.update(this.CONVERSATION_ID_KEY, this.currentConversationId);
+    }
+
+    private async saveConversationStatePrivate() {
+        await this.saveConversationState();
+    }
+
+    private async loadConversationState() {
+        const savedHistory = this.context.globalState.get<ChatMessage[]>(this.CONVERSATION_HISTORY_KEY);
+        const savedConversationId = this.context.globalState.get<string | undefined>(this.CONVERSATION_ID_KEY);
+
+        if (savedHistory && Array.isArray(savedHistory)) {
+            this.conversationHistory = savedHistory;
+        }
+
+        this.currentConversationId = savedConversationId;
+    }
+
+    private async getAnonymousUserId(): Promise<number> {
+        let userId = this.context.globalState.get<number>(this.ANONYMOUS_USER_ID_KEY);
+        
+        if (!userId) {
+            // Generate a random user ID between 1000000 and 999999999
+            // This range avoids conflicts with typical GitHub user IDs (which are usually smaller)
+            userId = Math.floor(Math.random() * (999999999 - 1000000 + 1)) + 1000000;
+            await this.context.globalState.update(this.ANONYMOUS_USER_ID_KEY, userId);
+        }
+        
+        return userId;
     }
 }

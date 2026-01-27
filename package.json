@@ -36,12 +36,6 @@
                 }
             ]
         },
-        "authentication": [
-            {
-                "id": "github",
-                "label": "GitHub"
-            }
-        ],
         "commands": [
             {
                 "command": "sigil-ps.toggleChat",

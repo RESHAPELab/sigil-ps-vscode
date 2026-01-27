@@ -6,12 +6,17 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     public static readonly viewType = 'sigil-ps.chatView';
     private _view?: vscode.WebviewView;
     private _messageHandler?: (message: any) => void;
+    private _onDisposeCallback?: () => void | Promise<void>;
 
     constructor(private readonly _extensionUri: vscode.Uri) {}
 
     public setMessageHandler(handler: (message: any) => void) {
         this._messageHandler = handler;
         // Do not register additional listeners here; resolveWebviewView owns the single listener.
+    }
+
+    public setOnDisposeCallback(callback: () => void | Promise<void>) {
+        this._onDisposeCallback = callback;
     }
 
     public resolveWebviewView(
@@ -49,6 +54,25 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
                 }
             }
         );
+
+        // Save state when webview visibility changes or is disposed
+        webviewView.onDidChangeVisibility(() => {
+            if (!webviewView.visible && this._onDisposeCallback) {
+                // Save state when webview becomes hidden
+                Promise.resolve(this._onDisposeCallback()).catch(err => {
+                    console.error('Error saving state on visibility change:', err);
+                });
+            }
+        });
+
+        // Also save when webview is disposed
+        webviewView.onDidDispose(() => {
+            if (this._onDisposeCallback) {
+                Promise.resolve(this._onDisposeCallback()).catch(err => {
+                    console.error('Error saving state on dispose:', err);
+                });
+            }
+        });
     }
 
     public postMessage(message: any) {
