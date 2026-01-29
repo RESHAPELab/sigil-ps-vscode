@@ -1,5 +1,7 @@
 # Installing the SIGIL-PS VS Code Extension (.vsix)
 
+For building and developing the extension, see [README.md](README.md).
+
 **IMPORTANT:** This extension used to be called Tiamat. If you have downloaded a new version since the name change, ensure you uninstall the Tiamat version, as it is treated like two separate extensions.
 
 This guide explains how to manually install the SIGIL-PS VS Code extension for testing, either using the **command line** or the **VS Code UI**.
@@ -39,6 +41,12 @@ Download and save the `.vsix` file to a known location (e.g., `Downloads`).
 4. Select **"Install from VSIX..."**.
 5. Navigate to and select the `.vsix` file.
 6. Wait for VS Code to install the extension.
+
+---
+
+## Using the Extension
+
+After installation, open the **Sigil** chat from the activity bar (left sidebar): click the Sigil icon to show the Sigil view, then use the chat panel. You do not need to open VS Code’s Chat view or type `@sigil-ps`.
 
 ---
 
