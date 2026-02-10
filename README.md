@@ -1,6 +1,19 @@
 # SIGIL-PS
 
-SIGIL-PS, Stepwise Instructional Guide for Independently Learning Programming Skills (or just "Sigil") is an LLM-based conversational agent for VS Code intended for novice programming students. It implements guards to coach, model, and scaffold computational thinking skills.
+SIGIL-PS, Stepwise Instructional Guide for Independently Learning Programming Skills (or just "Sigil") is an LLM-based conversational agent for VS Code intended for novice programming students (for example, NAU's CS 136 course). It implements guards to coach, model, and scaffold computational thinking skills.
+
+## Install (end users)
+
+You can use SIGIL-PS in two ways:
+
+1. **From the VS Code Marketplace (recommended)**  
+   - Open VS Code.
+   - Go to the **Extensions** view (`Ctrl+Shift+X` / `Cmd+Shift+X`).
+   - Search for **"SIGIL-PS"** (publisher: `RESHAPELab`) and install it.
+2. **From a `.vsix` package**  
+   - Download the desired `.vsix` from the GitHub **Releases** page for this repository.
+   - In VS Code, open the **Extensions** view, click the `...` menu, choose **Install from VSIX...**, and pick the downloaded file.  
+   - For more detail, see `install_instructions.md`.
 
 ## Features
 
@@ -79,7 +92,7 @@ A new VS Code window opens with the extension loaded. In that window:
 
 **Manual testing:** Run the extension (F5), open the Sigil chat from the activity bar sidebar, and use the panel. Optionally use a local backend (see above).
 
-**Automated tests:** The project is set up for **Extension Tests** (launch config "Extension Tests" and `npm run test`), but the **test suite is not yet implemented** — there is no `src/test/` folder and no test files. To add tests later:
+**Automated tests:** The project is set up for **Extension Tests** (launch config "Extension Tests" and `npm run test`), but the **test suite is not yet implemented** — there is currently no `src/test/` folder and no test files. To add tests later:
 
 1. Create a test suite (e.g. `src/test/suite/index.ts`) and test files matching `**/*.test.ts` under `src/test/`.
 2. Use `@vscode/test-electron` to run tests in a VS Code extension host.
@@ -109,12 +122,23 @@ To install a built `.vsix` (e.g. for testing or distribution), see [install_inst
 
 ## Known issues
 
-None yet.
+- The automated test suite is not yet implemented (see **Testing** above).
 
 ## Release notes
 
-This project is a work in progress.
+- **v1.1.0** – Current version (see `package.json`), published to the VS Code Marketplace.
+- Earlier versions – See the GitHub **Releases** page for tags, notes, and downloadable `.vsix` packages.
 
 ## Extension guidelines
 
 Follow the [Extension Guidelines](https://code.visualstudio.com/api/references/extension-guidelines) and best practices when developing this extension.
+
+## Continuous delivery and GitHub releases
+
+This repository is configured so that **merging a pull request into the default branch** automatically creates (or reuses) a GitHub Release based on the version in `package.json`:
+
+- When a PR is merged into the default branch, the GitHub Action:
+  - Reads the current extension version from `package.json` (e.g. `1.1.0`).
+  - Uses the tag `v<version>` (e.g. `v1.1.0`) for the release.
+  - Creates a new GitHub Release if one with that tag does not already exist, or skips if it does.
+- To cut a new release, **bump the version in `package.json`** in the PR you are merging; after the merge, the workflow will publish a corresponding GitHub Release and tag.

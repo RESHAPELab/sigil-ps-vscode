@@ -1,0 +1,95 @@
+name: Create GitHub Release on PR merge
+
+on:
+  pull_request:
+    types:
+      - closed
+    branches:
+      - main
+
+jobs:
+  create_release:
+    if: github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Create GitHub Release from package.json version
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+
+            // Read package.json to determine the current extension version
+            const packageJsonPath = path.join(process.env.GITHUB_WORKSPACE || '.', 'package.json');
+            const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+
+            const version = pkg.version;
+            if (!version) {
+              core.setFailed('No version field found in package.json');
+            }
+
+            const tag = `v${version}`;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+
+            core.info(`Preparing release for ${owner}/${repo} version ${version} with tag ${tag}`);
+
+            async function run() {
+              // First, check if a release with this tag already exists
+              try {
+                await github.rest.repos.getReleaseByTag({
+                  owner,
+                  repo,
+                  tag,
+                });
+
+                core.info(`Release with tag ${tag} already exists. Skipping creation.`);
+                return;
+              } catch (error) {
+                if (error.status !== 404) {
+                  core.setFailed(`Error checking for existing release: ${error.message}`);
+                  return;
+                }
+                core.info(`No existing release found for tag ${tag}. Creating a new one.`);
+              }
+
+              const pr = context.payload.pull_request;
+              const prNumber = pr ? pr.number : 'unknown';
+              const prTitle = pr ? pr.title : 'Merged pull request';
+
+              const bodyLines = [
+                `Automated release for version ${version}.`,
+                '',
+                `Merged PR: #${prNumber} - ${prTitle}`,
+              ];
+
+              try {
+                const response = await github.rest.repos.createRelease({
+                  owner,
+                  repo,
+                  tag_name: tag,
+                  name: `SIGIL-PS v${version}`,
+                  body: bodyLines.join('\n'),
+                  draft: false,
+                  prerelease: false,
+                });
+
+                core.info(`Created release: ${response.data.name}`);
+                core.info(`Release URL: ${response.data.html_url}`);
+              } catch (error) {
+                core.setFailed(`Failed to create release: ${error.message}`);
+              }
+            }
+
+            run();
+
