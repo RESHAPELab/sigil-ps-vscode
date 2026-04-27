@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import { v4 as uuidv4 } from 'uuid';
 import { authenticateWithGitHub, GitHubUser } from './auth';
-import getApiUrl from './apiConfig';
+import { getApiEndpoint } from './apiConfig';
 import { ChatViewProvider } from './chatViewProvider';
 
 const MAX_HISTORY_LENGTH = 6;
@@ -174,7 +174,7 @@ export class WebviewMessageHandler {
 
         try {
             // Call API
-            const apiResponse = await post(`${getApiUrl()}/api/prompt`, {
+            const apiResponse = await post(getApiEndpoint('/prompt'), {
                 userID: this.githubUser.id,
                 conversationID: this.currentConversationId,
                 code,
@@ -733,7 +733,7 @@ export class WebviewMessageHandler {
                 conversationID: this.currentConversationId
             });
 
-            const apiResponse = await post(`${getApiUrl()}/api/feedback`, {
+            const apiResponse = await post(getApiEndpoint('/feedback'), {
                 rating: data.rating === 'good' ? GOOD : BAD,
                 reason: data.reason,
                 personalize,
@@ -798,7 +798,7 @@ export class WebviewMessageHandler {
 
             const filename = vscode.workspace.asRelativePath(document.uri, false) || document.fileName;
 
-            await post(`${getApiUrl()}/api/users/codeChange`, {
+            await post(getApiEndpoint('/users/codeChange'), {
                 userID: this.githubUser.id,
                 filename,
                 content

@@ -4,7 +4,7 @@ import * as fs from 'fs';
 import { v4 as uuidv4 } from 'uuid';
 import { authenticateWithGitHub } from './auth';
 import { syncSigilSettings, updateOptIn, updatePersonalization } from './personalization';
-import getApiUrl from "./apiConfig";
+import getApiBaseUrl, { getApiEndpoint } from "./apiConfig";
 import { ChatViewProvider } from './chatViewProvider';
 import { WebviewMessageHandler } from './webviewMessageHandler';
 
@@ -71,7 +71,7 @@ export function activate(context: vscode.ExtensionContext) {
             let config = vscode.workspace.getConfiguration();
             let personalize = config.get<boolean>("sigil.personalizeResponses");
 
-            const apiResponse = await post(`${getApiUrl()}/api/feedback`, { rating: ratingEnum, reason: customReason, personalize, ...args });
+            const apiResponse = await post(getApiEndpoint('/feedback'), { rating: ratingEnum, reason: customReason, personalize, ...args });
             console.log('API Response:', apiResponse.data);
 
             if (personalize) {
@@ -156,7 +156,7 @@ export function activate(context: vscode.ExtensionContext) {
     // Allow user to manage personalization
     context.subscriptions.push(
         vscode.commands.registerCommand('sigil-ps.openPersonalization', async () => {
-            console.log("API URL:", getApiUrl());
+            console.log("API URL:", getApiBaseUrl());
             vscode.window.showInformationMessage('Opening Sigil Personalization settings...');
 
             await syncSigilSettings(context);
@@ -178,4 +178,3 @@ export function activate(context: vscode.ExtensionContext) {
 }
 
 export function deactivate() { }
-
