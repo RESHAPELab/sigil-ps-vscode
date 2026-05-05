@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 
-const CAT_API_BASE_URL = 'https://sigil-api-cat-test.lemonsand-c67bbaad.westus2.azurecontainerapps.io/api';
-const TEST_API_BASE_URL = 'https://sigil-api-test.lemonsand-c67bbaad.westus2.azurecontainerapps.io/api';
+const CAT_API_BASE_URL = 'https://sigil-api-cat.lemonsand-c67bbaad.westus2.azurecontainerapps.io';
+const TEST_API_BASE_URL = 'https://sigil-api-cat-test.lemonsand-c67bbaad.westus2.azurecontainerapps.io';
 
 function normalizeApiBaseUrl(url: string): string {
     const trimmedUrl = url.trim().replace(/\/+$/, '');
