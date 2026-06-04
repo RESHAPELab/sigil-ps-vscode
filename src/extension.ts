@@ -107,11 +107,16 @@ export function activate(context: vscode.ExtensionContext) {
     
     // Set up message handler - it will be connected when the view is resolved
     chatViewProvider.setMessageHandler((message) => {
-        messageHandler.handleMessage(message);
-        // Initialize when webview sends ready message
         if (message.command === 'ready') {
             messageHandler.initialize();
+            return;
         }
+
+        messageHandler.handleMessage(message);
+    });
+
+    chatViewProvider.setOnDisposeCallback(async () => {
+        await messageHandler.saveConversationState();
     });
 
     // Register command to focus/reveal the chat view
