@@ -19,7 +19,7 @@ export interface ChatMessage {
     content: string;
     timestamp: number;
     conversationId?: string;
-    attachments?: { fileName: string; content: string; }[];
+    attachments?: { fileName: string; content?: string; }[];
 }
 
 export interface FileContext {
@@ -845,8 +845,17 @@ export class WebviewMessageHandler {
     }
 
     public async saveConversationState() {
-        await this.context.globalState.update(this.CONVERSATION_HISTORY_KEY, this.conversationHistory);
+        await this.context.globalState.update(this.CONVERSATION_HISTORY_KEY, this.getPersistableConversationHistory());
         await this.context.globalState.update(this.CONVERSATION_ID_KEY, this.currentConversationId);
+    }
+
+    private getPersistableConversationHistory(): ChatMessage[] {
+        return this.conversationHistory.map(message => ({
+            ...message,
+            attachments: message.attachments?.map(attachment => ({
+                fileName: attachment.fileName
+            }))
+        }));
     }
 
     private async loadConversationState() {
