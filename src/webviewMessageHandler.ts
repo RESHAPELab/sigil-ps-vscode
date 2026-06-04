@@ -33,6 +33,8 @@ export class WebviewMessageHandler {
     private currentConversationId: string | undefined;
     private githubUser: GitHubUser | null = null;
     private disposables: vscode.Disposable[] = [];
+    private readonly CONVERSATION_HISTORY_KEY = 'sigil-ps_conversationHistory';
+    private readonly CONVERSATION_ID_KEY = 'sigil-ps_conversationId';
 
     constructor(
         private context: vscode.ExtensionContext,
@@ -40,6 +42,9 @@ export class WebviewMessageHandler {
     ) {
         this.setupMessageHandlers();
         this.registerActiveEditorListener();
+        this.loadConversationState().catch(err => {
+            console.error('Error loading conversation state:', err);
+        });
     }
 
     private setupMessageHandlers() {
@@ -62,7 +67,10 @@ export class WebviewMessageHandler {
                     await this.handleRequestAuth();
                     break;
                 case 'clearHistory':
-                    this.handleClearHistory();
+                    await this.handleClearHistory();
+                    break;
+                case 'saveState':
+                    await this.saveConversationState();
                     break;
                 case 'pickFiles':
                     await this.handlePickFiles();
@@ -141,6 +149,7 @@ export class WebviewMessageHandler {
             attachments: data.attachments && data.attachments.length > 0 ? data.attachments : undefined
         };
         this.conversationHistory.push(userMessage);
+        await this.saveConversationState();
 
         // Send user message to webview
         this.viewProvider.postMessage({
@@ -199,6 +208,7 @@ export class WebviewMessageHandler {
                 conversationId: this.currentConversationId
             };
             this.conversationHistory.push(assistantMessage);
+            await this.saveConversationState();
 
             // Send assistant message to webview
             this.viewProvider.postMessage({
@@ -808,15 +818,17 @@ export class WebviewMessageHandler {
         }
     }
 
-    private handleClearHistory() {
+    private async handleClearHistory() {
         this.conversationHistory = [];
         this.currentConversationId = undefined;
         this.viewProvider.postMessage({
             command: 'historyCleared'
         });
+        await this.saveConversationState();
     }
 
     public async initialize() {
+        await this.loadConversationState();
         // Request authentication status
         await this.handleRequestAuth();
         // Send initial file context
@@ -830,5 +842,21 @@ export class WebviewMessageHandler {
                 conversationId: this.currentConversationId
             }
         });
+    }
+
+    public async saveConversationState() {
+        await this.context.globalState.update(this.CONVERSATION_HISTORY_KEY, this.conversationHistory);
+        await this.context.globalState.update(this.CONVERSATION_ID_KEY, this.currentConversationId);
+    }
+
+    private async loadConversationState() {
+        const savedHistory = this.context.globalState.get<ChatMessage[]>(this.CONVERSATION_HISTORY_KEY);
+        const savedConversationId = this.context.globalState.get<string | undefined>(this.CONVERSATION_ID_KEY);
+
+        if (savedHistory && Array.isArray(savedHistory)) {
+            this.conversationHistory = savedHistory;
+        }
+
+        this.currentConversationId = savedConversationId;
     }
 }
