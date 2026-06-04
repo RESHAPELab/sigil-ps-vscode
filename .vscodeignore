@@ -2,6 +2,7 @@
 .vscode-test/**
 .codex
 context/**
+builds/**
 src/**
 .gitignore
 .yarnrc
