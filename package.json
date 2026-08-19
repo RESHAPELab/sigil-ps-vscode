@@ -64,6 +64,12 @@
         "configuration": {
             "title": "SIGIL-PS Settings",
             "properties": {
+                "sigil.apiBaseUrl": {
+                    "type": "string",
+                    "default": "https://sigil-api.lemonsand-c67bbaad.westus2.azurecontainerapps.io/api",
+                    "scope": "machine",
+                    "description": "Base URL for the SIGIL API, including the /api path."
+                },
                 "sigil.persona": {
                     "type": "string",
                     "enum": [
@@ -101,7 +107,7 @@
                     "type": "string",
                     "default": "",
                     "scope": "machine",
-                    "description": "Development setting: custom base URL for the SIGIL-PS API for testing purposes (i.e. localhost). Only applies when in test environment."
+                    "description": "Development setting: custom base URL for the SIGIL-PS API for testing purposes (i.e. localhost). The /api path is added automatically if omitted. Only applies when in test environment."
                 }
             }
         },
@@ -137,7 +143,6 @@
     },
     "dependencies": {
         "axios": "^1.7.9",
-        "sigil-ps": "file:",
         "uuid": "^11.1.0"
     },
     "repository": {

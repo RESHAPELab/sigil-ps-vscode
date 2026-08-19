@@ -1,4 +1,4 @@
-import getApiUrl from "./apiConfig";
+import { getApiEndpoint } from "./apiConfig";
 import { authenticateWithGitHub } from "./auth";
 import {AxiosError, get, post, put} from "axios";
 import * as vscode from 'vscode';
@@ -13,14 +13,14 @@ export async function syncSigilSettings(context: vscode.ExtensionContext) {
             return;
         }
 
-        const result = await get(`${getApiUrl()}/api/personalization/${githubUser.id}`);
+        const result = await get(getApiEndpoint(`/personalization/${githubUser.id}`));
         const personalization = result.data.personalization || {"personalizedPrompt": ""};
 
         const config = vscode.workspace.getConfiguration();
         await config.update('sigil.personalizedPrompt', personalization.personalizedPrompt, vscode.ConfigurationTarget.Global);
 
-        const optInResult = await get(`${getApiUrl()}/api/users/getFieldStudyOptInStatus/${githubUser.id}`);
-        const optIn = result.data.fieldStudyOptIn || false;
+        const optInResult = await get(getApiEndpoint(`/users/getFieldStudyOptInStatus/${githubUser.id}`));
+        const optIn = optInResult.data.fieldStudyOptIn || false;
         await config.update('sigil.fieldStudyOptIn', optIn, vscode.ConfigurationTarget.Global);
 
         vscode.window.showInformationMessage("Sigil: User settings synced successfully");
@@ -42,7 +42,7 @@ export async function updatePersonalization(context: vscode.ExtensionContext, ne
             return;
         }
 
-        await put(`${getApiUrl()}/api/personalization/${githubUser.id}`, { personalization: { personalizedPrompt: newPersonalization } });
+        await put(getApiEndpoint(`/personalization/${githubUser.id}`), { personalization: { personalizedPrompt: newPersonalization } });
         vscode.window.showInformationMessage("Sigil: Personalization settings updated successfully");
     } catch (error) {
         vscode.window.showErrorMessage("Sigil: Error updating personalization settings");
@@ -58,7 +58,7 @@ export async function updateOptIn(context: vscode.ExtensionContext, newSetting: 
             return;
         }
 
-        await post(`${getApiUrl()}/api/users/changeFieldStudyOptInStatus`, { userID: githubUser.id, fieldStudyOptIn: newSetting });
+        await post(getApiEndpoint('/users/changeFieldStudyOptInStatus'), { userID: githubUser.id, fieldStudyOptIn: newSetting });
         vscode.window.showInformationMessage("Sigil: Opt in status updated successfully");
     } catch (error) {
         vscode.window.showErrorMessage("Sigil: Error updating opt in status");
