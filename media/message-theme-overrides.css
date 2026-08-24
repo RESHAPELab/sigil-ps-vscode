@@ -1,0 +1,28 @@
+/* Message-specific colors kept separate from shared button and input styles. */
+.justify-end > .sigil-button,
+.justify-end > .sigil-button:hover {
+  background: #e8f3fe !important;
+  color: #000000 !important;
+}
+
+.justify-end > .sigil-button * {
+  color: #000000;
+}
+
+.sigil-markdown-user :not(pre) > code {
+  background: #d1deeb;
+  color: #000000;
+}
+
+.sigil-markdown-user pre {
+  background: #d1deeb;
+  color: #000000;
+}
+
+.sigil-markdown-user pre code {
+  color: #000000;
+}
+
+.sigil-markdown-assistant :not(pre) > code {
+  color: var(--sigil-input-fg, var(--sigil-fg));
+}
